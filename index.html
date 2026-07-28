@@ -1,4 +1,4 @@
-<!-- Портал базы конструкций наружной рекламы, Алматы. Публичная часть. Версия 1.5 -->
+<!-- Портал базы конструкций наружной рекламы, Алматы. Публичная часть. Версия 1.7 -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>База конструкций — Алматы</title>
@@ -89,6 +89,8 @@ main{flex:1 1 auto;display:flex;min-height:0}
 .mapbox{position:absolute;z-index:800;background:var(--panel);border:1px solid var(--line);
         border-radius:var(--radius);box-shadow:var(--shadow)}
 #layers{top:10px;right:10px;width:222px;padding:10px 11px;font-size:12.5px}
+#layersToggle{display:none;top:10px;right:10px;width:38px;height:38px;align-items:center;justify-content:center;
+              font-size:17px;cursor:pointer;color:var(--ink)}
 #layers h4{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--dim)}
 #layers .row{display:flex;align-items:center;gap:6px;padding:2.5px 0}
 #layers hr{border:0;border-top:1px solid var(--line);margin:8px 0}
@@ -148,6 +150,32 @@ table.kv td:first-child{color:var(--dim);width:44%}
   .seg.mob{display:flex}
   #layers{width:190px}
   .legend{display:none}
+
+  /* Шапка на узком экране: поиск и переключатель не помещаются в одну строку
+     с брендом и кнопкой подборки — без переноса они наезжают друг на друга
+     (переключатель «На карте» вылезал за правый край экрана). Переносим
+     их на отдельные строки вместо сжатия. */
+  header{flex-wrap:wrap;height:auto;padding:8px 14px;row-gap:8px}
+  .brand{order:1;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .brand small{display:none}
+  .cartbtn{order:2;flex:0 0 auto}
+  #q{order:3;flex:1 1 100%;max-width:none}
+  .seg.mob{order:4;flex:1 1 100%}
+  .seg.mob button{flex:1 1 50%;padding:11px 8px}
+
+  /* Тач-цели крупнее, поля ввода 16px — иначе Safari на iPhone зумит
+     страницу при фокусе на поле мельче 16px. */
+  select,.chkwrap,.fgroup input[type=number],#q{font-size:16px}
+  .chip{padding:8px 13px;font-size:13.5px}
+  .chk{padding:5px 0;font-size:13.5px}
+  .btn{padding:10px 14px;font-size:14px}
+  .card .pick{transform:scale(1.35);right:11px;bottom:11px}
+
+  /* Панель слоёв карты сворачивается — на телефоне она иначе постоянно
+     занимает четверть экрана карты. По умолчанию свёрнута. */
+  #layersToggle{display:flex}
+  #layers{display:none}
+  #layers.open{display:block}
 }
 </style>
 
@@ -184,6 +212,7 @@ table.kv td:first-child{color:var(--dim);width:44%}
   <div id="listpane"><div class="empty">…</div></div>
   <div id="mappane">
     <div id="map"></div>
+    <div class="mapbox" id="layersToggle" title="Слои карты">⚙</div>
     <div class="mapbox" id="layers">
       <h4>Основа</h4>
       <div class="row"><input type="radio" name="base" id="bOsm" checked><label for="bOsm">Схема OSM</label></div>
@@ -504,6 +533,11 @@ function drawMarkers(){
 }
 
 /* --- контролы слоёв --- */
+/* На телефоне панель слоёв свёрнута в кнопку-шестерёнку — иначе она
+   постоянно занимает четверть экрана карты. На широком экране кнопка
+   скрыта, панель всегда открыта — как и было. */
+document.getElementById('layersToggle').onclick = () =>
+  document.getElementById('layers').classList.toggle('open');
 document.getElementById('bOsm').onchange = () => { map.removeLayer(sat); osm.addTo(map); };
 document.getElementById('bSat').onchange = () => { map.removeLayer(osm); sat.addTo(map); };
 const tog = (id, layer) => document.getElementById(id).onchange = e =>
