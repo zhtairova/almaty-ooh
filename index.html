@@ -1,4 +1,4 @@
-<!-- Портал базы конструкций наружной рекламы, Алматы. Публичная часть. Версия 1.3 -->
+<!-- Портал базы конструкций наружной рекламы, Алматы. Публичная часть. Версия 1.5 -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>База конструкций — Алматы</title>
@@ -51,8 +51,8 @@ header{height:var(--h-head);flex:0 0 auto;background:var(--panel);border-bottom:
          max-height:34vh;overflow-y:auto;overscroll-behavior:contain}
 .fgroup{display:flex;align-items:center;gap:5px}
 .fgroup > label{font-size:12px;color:var(--dim)}
-select,.chkwrap{padding:6px 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);
-       color:var(--ink);font-size:13px;max-width:220px}
+select,.chkwrap,.fgroup input[type=number]{padding:6px 9px;border:1px solid var(--line);border-radius:7px;
+       background:var(--bg);color:var(--ink);font-size:13px;max-width:220px}
 .chips{display:flex;gap:5px;flex-wrap:wrap}
 .chip{border:1px solid var(--line);border-radius:20px;padding:5px 11px;font-size:12.5px;cursor:pointer;
       background:var(--bg);color:var(--dim);user-select:none;display:flex;align-items:center;gap:6px}
@@ -169,6 +169,10 @@ table.kv td:first-child{color:var(--dim);width:44%}
   <div class="fgroup"><label>Район</label><select id="fDistrict"></select></div>
   <div class="fgroup"><label>Зона</label><select id="fZone"></select></div>
   <div class="fgroup"><label>Улица</label><select id="fStreet"></select></div>
+  <div class="fgroup"><label>Цена, тг</label>
+    <input id="fPriceMin" type="number" placeholder="от" style="width:92px" min="0" step="10000">
+    <input id="fPriceMax" type="number" placeholder="до" style="width:92px" min="0" step="10000">
+  </div>
   <label class="chk"><input type="checkbox" id="fMedian"> на разделительной</label>
   <label class="chk"><input type="checkbox" id="fPhoto"> только с фото</label>
   <label class="chk"><input type="checkbox" id="fRetired"> показывать снятые</label>
@@ -318,9 +322,17 @@ computeZones();
 const S = {
   q: '', contractors: new Set(), formats: new Set(),
   district: '', zone: '', street: '',
+  priceMin: null, priceMax: null,
   median: false, photo: false, retired: false,
-  cart: new Set(), active: null, limit: 200
+  cart: new Set(), active: null, limit: 200,
+  discounts: {}   // { contractorId: процент } — только для текущей подборки, в data.js не пишется
 };
+const fmtMoney = n => (n == null ? '' : Math.round(n).toLocaleString('ru-RU') + ' тг');
+function effectivePrice(c){
+  if (c.price == null) return null;
+  const d = S.discounts[c.contractor] || 0;
+  return d ? Math.round(c.price * (1 - d / 100)) : c.price;
+}
 
 function chips(host, items, set, colored){
   host.innerHTML = '';
@@ -379,6 +391,11 @@ function pass(c){
   if (S.district && districtOf(c) !== S.district) return false;
   if (S.zone && zoneOf(c) !== S.zone) return false;
   if (S.street && !(c.streets || []).includes(S.street)) return false;
+  if (S.priceMin != null || S.priceMax != null){
+    if (c.price == null) return false;   // без цены — нельзя подтвердить попадание в диапазон
+    if (S.priceMin != null && c.price < S.priceMin) return false;
+    if (S.priceMax != null && c.price > S.priceMax) return false;
+  }
   if (S.median && !c.median) return false;
   if (S.photo && !(c.photos && c.photos.length)) return false;
   if (S.q){
@@ -562,13 +579,18 @@ document.getElementById('q').oninput = e => { S.q = e.target.value.trim(); apply
 document.getElementById('fDistrict').onchange = e => { S.district = e.target.value; apply(); };
 document.getElementById('fZone').onchange     = e => { S.zone = e.target.value; apply(); };
 document.getElementById('fStreet').onchange   = e => { S.street = e.target.value; apply(); };
+document.getElementById('fPriceMin').oninput  = e => { S.priceMin = e.target.value === '' ? null : +e.target.value; apply(); };
+document.getElementById('fPriceMax').oninput  = e => { S.priceMax = e.target.value === '' ? null : +e.target.value; apply(); };
 document.getElementById('fMedian').onchange   = e => { S.median = e.target.checked; apply(); };
 document.getElementById('fPhoto').onchange    = e => { S.photo = e.target.checked; apply(); };
 document.getElementById('fRetired').onchange  = e => { S.retired = e.target.checked; buildFilters(); apply(); };
 document.getElementById('clear').onclick = () => {
   S.q = ''; S.contractors.clear(); S.formats.clear();
-  S.district = S.zone = S.street = ''; S.median = S.photo = S.retired = false;
+  S.district = S.zone = S.street = ''; S.priceMin = S.priceMax = null;
+  S.median = S.photo = S.retired = false;
   document.getElementById('q').value = '';
+  document.getElementById('fPriceMin').value = '';
+  document.getElementById('fPriceMax').value = '';
   ['fMedian','fPhoto','fRetired'].forEach(i => document.getElementById(i).checked = false);
   buildFilters(); apply();
 };
@@ -606,7 +628,7 @@ function openCard(id){
     row('Район', esc(districtOf(c))) +
     row('Зона', esc(zoneOf(c))) +
     row('Координаты', c.lat.toFixed(6) + ', ' + c.lon.toFixed(6)) +
-    row('Размер', esc(c.size)) + row('Цена', esc(c.price)) +
+    row('Размер', esc(c.size)) + row('Цена', esc(fmtMoney(c.price))) +
     row('Подсветка', esc(c.lighting)) + row('Разрешение', esc(c.resolution)) +
     row('Статус', esc(c.status) + (c.statusDate ? ' <span style="color:var(--dim)">(' + esc(c.statusDate) + ')</span>' : '')) +
     row('Примечание', esc(c.notes)) +
@@ -681,15 +703,65 @@ function renderCart(){
     warn = '<div class="note"><b>Пересечение по локациям.</b> В подборке есть конструкции, стоящие на одном перекрёстке — они бьют по одному и тому же потоку:<br>' +
       dup.map(([k, v]) => '· ' + esc((LOC.get(k) || {}).key || '—') + ' — ' + v.length + ' шт.').join('<br>') + '</div>';
   }
-  host.innerHTML = warn + items.map((c, i) => {
+
+  /* скидка по подрядчику — только на эту подборку и эту выгрузку, в data.js не сохраняется */
+  const consInCart = [...new Set(items.map(c => c.contractor))]
+    .sort((a, b) => (CON.get(a)?.name || a).localeCompare(CON.get(b)?.name || b, 'ru'));
+  const discountRows = consInCart.map(cid => {
+    const con = CON.get(cid) || { name: cid, color: '#888' };
+    const v = S.discounts[cid] || '';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0">' +
+      '<span class="tag c" style="background:' + con.color + ';min-width:110px;text-align:center">' + esc(con.name) + '</span>' +
+      '<input type="number" min="0" max="100" step="1" data-disc="' + esc(cid) + '" value="' + v + '" placeholder="0" ' +
+      'style="width:60px;padding:4px 7px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font-size:12.5px">' +
+      '<span style="font-size:12px;color:var(--dim)">% скидка</span></div>';
+  }).join('');
+
+  host.innerHTML = warn +
+    '<div class="nb"><h4>Скидка по подрядчику</h4>' + discountRows +
+      '<div class="hint">Действует только для этой подборки — в таблицу и в цену идёт применённое значение, база данных не меняется.</div></div>' +
+    '<div id="cartItems" style="margin-top:8px"></div>' +
+    '<div id="cartTotal"></div>';
+
+  host.querySelectorAll('[data-disc]').forEach(inp => inp.oninput = () => {
+    const v = inp.value === '' ? 0 : Math.max(0, Math.min(100, +inp.value));
+    S.discounts[inp.dataset.disc] = v;
+    renderCartItemsAndTotal();
+  });
+  renderCartItemsAndTotal();
+}
+
+function renderCartItemsAndTotal(){
+  const itemsHost = document.getElementById('cartItems');
+  const totalHost = document.getElementById('cartTotal');
+  if (!itemsHost || !totalHost) return;
+  const items = [...S.cart].map(id => byId.get(id)).filter(Boolean);
+
+  itemsHost.innerHTML = items.map((c, i) => {
     const th = (c.photos && c.photos.length) ? c.photos[0].replace('photos/full/','photos/thumb/') : null;
+    const disc = S.discounts[c.contractor] || 0;
+    const eff = effectivePrice(c);
+    const priceHtml = c.price == null ? '<span style="color:var(--dim)">без цены</span>'
+      : (disc ? '<s style="color:var(--dim)">' + fmtMoney(c.price) + '</s> → <b>' + fmtMoney(eff) + '</b>' : fmtMoney(c.price));
     return '<div class="cartrow">' + (th ? '<img src="' + esc(th) + '" alt="">' : '<div class="ph none" style="width:56px;height:40px"></div>') +
       '<div style="min-width:0"><div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
       (i+1) + '. ' + esc(c.address || c.name) + '</div>' +
-      '<div style="font-size:11px;color:var(--dim)">' + esc(c._con.name) + ' · ' + esc(c._fmt.name) + ' · ' + esc(c.code||'') + '</div></div>' +
+      '<div style="font-size:11px;color:var(--dim)">' + esc(c._con.name) + ' · ' + esc(c._fmt.name) + ' · ' + esc(c.code||'') + '</div>' +
+      '<div style="font-size:11.5px;margin-top:1px">' + priceHtml + '</div></div>' +
       '<button class="x" data-del="' + esc(c.id) + '" title="убрать">×</button></div>';
   }).join('');
-  host.querySelectorAll('[data-del]').forEach(b => b.onclick = () => toggleCart(b.dataset.del));
+  itemsHost.querySelectorAll('[data-del]').forEach(b => b.onclick = () => toggleCart(b.dataset.del));
+
+  const priced = items.filter(c => c.price != null);
+  const sumOriginal = priced.reduce((s, c) => s + c.price, 0);
+  const sumEffective = priced.reduce((s, c) => s + effectivePrice(c), 0);
+  const noPrice = items.length - priced.length;
+  totalHost.innerHTML =
+    '<div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--line);font-size:13.5px">' +
+    'Итого (' + priced.length + ' из ' + items.length + ' с ценой): ' +
+    (sumEffective !== sumOriginal ? '<s style="color:var(--dim)">' + fmtMoney(sumOriginal) + '</s> → ' : '') +
+    '<b>' + fmtMoney(sumEffective) + '</b></div>' +
+    (noPrice ? '<div class="hint">Без цены: ' + noPrice + ' шт. — не входят в итог.</div>' : '');
 }
 document.getElementById('openCart').onclick = () => { renderCart(); veil.classList.add('on'); sheetCart.classList.add('on'); };
 document.getElementById('cartClear').onclick = () => { S.cart.clear();
@@ -791,22 +863,30 @@ const stamp = () => new Date().toISOString().slice(0,10);
 document.getElementById('expXlsx').onclick = () => {
   if (!S.cart.size) return toast('Подборка пуста');
   const items = [...S.cart].map(id => byId.get(id)).filter(Boolean);
-  const rows = items.map((c, i) => ({
-    '№': i+1, 'Подрядчик': c._con.name, 'Формат': c._fmt.name, 'Код': c.code || '',
-    'Адрес': c.address || c.name, 'Улицы': (c.streets||[]).join(' × '),
-    'Ориентиры': (c.landmarks||[]).join(', '), 'Направление': c.direction || '',
-    'Раздел. полоса': c.median ? 'да' : '', 'Сторона': c.side || '',
-    'Район': districtOf(c) || '', 'Зона': zoneOf(c) || '',
-    'Широта': c.lat, 'Долгота': c.lon,
-    'Размер': c.size || '', 'Цена': c.price || '', 'Подсветка': c.lighting || '',
-    'Разрешение': c.resolution || '', 'Статус': c.status || '',
-    'Фото': (c.photos && c.photos.length) ? 'есть' : 'нет',
-    'Полное название': c.name, 'Каталог': c.catalogUrl || ''
-  }));
+  const rows = items.map((c, i) => {
+    const disc = S.discounts[c.contractor] || 0;
+    return {
+      '№': i+1, 'Подрядчик': c._con.name, 'Формат': c._fmt.name, 'Код': c.code || '',
+      'Адрес': c.address || c.name, 'Улицы': (c.streets||[]).join(' × '),
+      'Ориентиры': (c.landmarks||[]).join(', '), 'Направление': c.direction || '',
+      'Раздел. полоса': c.median ? 'да' : '', 'Сторона': c.side || '',
+      'Район': districtOf(c) || '', 'Зона': zoneOf(c) || '',
+      'Широта': c.lat, 'Долгота': c.lon,
+      'Размер': c.size || '', 'Цена': c.price ?? '', 'Скидка, %': disc || '',
+      'Цена со скидкой': c.price != null ? effectivePrice(c) : '',
+      'Подсветка': c.lighting || '', 'Разрешение': c.resolution || '', 'Статус': c.status || '',
+      'Фото': (c.photos && c.photos.length) ? 'есть' : 'нет',
+      'Полное название': c.name, 'Каталог': c.catalogUrl || ''
+    };
+  });
+  const priced = items.filter(c => c.price != null);
+  rows.push({ '№': '', 'Подрядчик': '', 'Формат': '', 'Код': '', 'Адрес': 'ИТОГО (' + priced.length + ' из ' + items.length + ' с ценой)',
+    'Цена': priced.reduce((s,c)=>s+c.price,0), 'Цена со скидкой': priced.reduce((s,c)=>s+effectivePrice(c),0) });
+
   const ws = XLSX.utils.json_to_sheet(rows);
   ws['!cols'] = [{wch:4},{wch:10},{wch:20},{wch:20},{wch:42},{wch:26},{wch:22},{wch:14},
-                 {wch:13},{wch:15},{wch:14},{wch:14},{wch:11},{wch:11},{wch:10},{wch:10},
-                 {wch:12},{wch:13},{wch:12},{wch:7},{wch:52},{wch:26}];
+                 {wch:13},{wch:15},{wch:14},{wch:14},{wch:11},{wch:11},{wch:10},{wch:12},
+                 {wch:14},{wch:12},{wch:13},{wch:12},{wch:7},{wch:52},{wch:26}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Подборка');
   XLSX.writeFile(wb, 'Подборка_' + stamp() + '.xlsx');
@@ -859,7 +939,9 @@ document.getElementById('expPptx').onclick = async () => {
         ['Улицы', (c.streets||[]).join(' × ')], ['Ориентиры', (c.landmarks||[]).join(', ')],
         ['Направление', c.direction], ['Разделительная', c.median ? 'да' : ''],
         ['Сторона', c.side], ['Район', districtOf(c)], ['Зона', zoneOf(c)],
-        ['Размер', c.size], ['Цена', c.price], ['Подсветка', c.lighting],
+        ['Размер', c.size],
+        ['Цена', c.price == null ? '' : (S.discounts[c.contractor] ? fmtMoney(c.price) + ' → ' + fmtMoney(effectivePrice(c)) + ' (-' + S.discounts[c.contractor] + '%)' : fmtMoney(c.price))],
+        ['Подсветка', c.lighting],
         ['Разрешение', c.resolution], ['Статус', c.status],
         ['Координаты', c.lat.toFixed(5) + ', ' + c.lon.toFixed(5)]
       ].filter(r => r[1]);
