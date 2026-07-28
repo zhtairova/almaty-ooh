@@ -1,0 +1,921 @@
+<!-- Портал базы конструкций наружной рекламы, Алматы. Публичная часть. Версия 1.1 -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>База конструкций — Алматы</title>
+
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="vendor/MarkerCluster.css">
+<link rel="stylesheet" href="vendor/MarkerCluster.Default.css">
+
+<style>
+:root{
+  --bg:#f4f5f7; --panel:#fff; --line:#e2e5ea; --ink:#1c2330; --dim:#6b7481;
+  --accent:#1f77d0; --accent-ink:#fff; --warn:#c2410c; --ok:#0f9b4a;
+  --shadow:0 1px 3px rgba(20,30,50,.09),0 6px 18px rgba(20,30,50,.06);
+  --radius:9px; --h-head:52px; --h-filters:auto;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#14181f; --panel:#1b212b; --line:#2b3340; --ink:#e6e9ee; --dim:#98a2b0;
+         --shadow:0 1px 3px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.3); }
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font:14px/1.45 -apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink);background:var(--bg);
+     display:flex;flex-direction:column;overflow:hidden}
+
+/* ---------- header ---------- */
+header{height:var(--h-head);flex:0 0 auto;background:var(--panel);border-bottom:1px solid var(--line);
+       display:flex;align-items:center;gap:12px;padding:0 14px;z-index:1200}
+.brand{font-weight:650;font-size:15px;white-space:nowrap}
+.brand small{font-weight:400;color:var(--dim);margin-left:6px}
+#q{flex:1 1 260px;max-width:420px;padding:7px 11px;border:1px solid var(--line);border-radius:var(--radius);
+   background:var(--bg);color:var(--ink);font-size:14px}
+#q:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.seg{display:flex;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.seg button{border:0;background:var(--panel);color:var(--dim);padding:7px 13px;cursor:pointer;font-size:13px}
+.seg button.on{background:var(--accent);color:var(--accent-ink)}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 12px;
+     border-radius:var(--radius);cursor:pointer;font-size:13px;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.primary:hover{filter:brightness(1.07)}
+.cartbtn{position:relative}
+.cartbtn b{background:var(--warn);color:#fff;border-radius:10px;padding:1px 6px;font-size:11px;margin-left:6px}
+
+/* ---------- filters ---------- */
+/* Панель фильтров переносится в несколько строк на узком окне. Без ограничения
+   высоты она съедает весь экран и карте остаётся десяток пикселей — поэтому
+   своя прокрутка и жёсткий потолок. На широком окне это ни на что не влияет. */
+#filters{flex:0 0 auto;background:var(--panel);border-bottom:1px solid var(--line);
+         padding:9px 14px;display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;z-index:1100;
+         max-height:34vh;overflow-y:auto;overscroll-behavior:contain}
+.fgroup{display:flex;align-items:center;gap:5px}
+.fgroup > label{font-size:12px;color:var(--dim)}
+select,.chkwrap{padding:6px 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);
+       color:var(--ink);font-size:13px;max-width:220px}
+.chips{display:flex;gap:5px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);border-radius:20px;padding:5px 11px;font-size:12.5px;cursor:pointer;
+      background:var(--bg);color:var(--dim);user-select:none;display:flex;align-items:center;gap:6px}
+.chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.chip .sw{width:9px;height:9px;border-radius:50%;display:inline-block}
+.chk{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--dim);cursor:pointer;white-space:nowrap}
+#count{margin-left:auto;font-weight:600;white-space:nowrap}
+#count span{color:var(--dim);font-weight:400}
+
+/* ---------- main ---------- */
+main{flex:1 1 auto;display:flex;min-height:0}
+#listpane{width:392px;flex:0 0 auto;border-right:1px solid var(--line);background:var(--panel);
+          overflow-y:auto;overscroll-behavior:contain}
+#mappane{flex:1 1 auto;position:relative;min-width:0}
+#map{position:absolute;inset:0}
+
+/* ---------- list ---------- */
+.card{display:flex;gap:10px;padding:9px 11px;border-bottom:1px solid var(--line);cursor:pointer;position:relative}
+.card:hover{background:var(--bg)}
+.card.act{background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.card .ph{width:96px;height:66px;flex:0 0 auto;border-radius:6px;object-fit:cover;background:var(--bg);
+          border:1px solid var(--line)}
+.card .ph.none{display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--dim);text-align:center}
+.card .body{min-width:0;flex:1 1 auto}
+.card .t{font-weight:600;font-size:13px;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .m{font-size:11.5px;color:var(--dim);display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.card .pick{position:absolute;right:8px;bottom:8px}
+.tag{border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:10.5px}
+.tag.c{color:#fff;border:0;padding:2px 6px}
+.more{padding:14px;text-align:center}
+.empty{padding:34px 18px;text-align:center;color:var(--dim)}
+
+/* ---------- map controls (в манере генплана) ---------- */
+.mapbox{position:absolute;z-index:800;background:var(--panel);border:1px solid var(--line);
+        border-radius:var(--radius);box-shadow:var(--shadow)}
+#layers{top:10px;right:10px;width:222px;padding:10px 11px;font-size:12.5px}
+#layers h4{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--dim)}
+#layers .row{display:flex;align-items:center;gap:6px;padding:2.5px 0}
+#layers hr{border:0;border-top:1px solid var(--line);margin:8px 0}
+#layers input[type=range]{width:100%}
+.legend{position:absolute;left:10px;bottom:18px;z-index:800;background:var(--panel);border:1px solid var(--line);
+        border-radius:var(--radius);box-shadow:var(--shadow);padding:8px 10px;font-size:11.5px}
+.legend .r{display:flex;align-items:center;gap:6px;padding:1.5px 0}
+
+/* ---------- markers ---------- */
+.mk{display:block}
+.mk svg{display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
+.mk.sel svg{filter:drop-shadow(0 0 0 2px #fff) drop-shadow(0 0 6px var(--accent))}
+.marker-cluster-small{background:rgba(31,119,208,.28)}
+.marker-cluster-small div{background:rgba(31,119,208,.8);color:#fff}
+.marker-cluster-medium{background:rgba(31,119,208,.34)}
+.marker-cluster-medium div{background:rgba(31,119,208,.86);color:#fff}
+.marker-cluster-large{background:rgba(31,119,208,.4)}
+.marker-cluster-large div{background:rgba(31,119,208,.92);color:#fff}
+.marker-cluster div{font:600 12px/30px -apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+
+/* ---------- modal / drawer ---------- */
+.veil{position:fixed;inset:0;background:rgba(12,18,28,.5);z-index:2000;display:none}
+.veil.on{display:block}
+.sheet{position:fixed;top:0;right:0;height:100%;width:min(560px,100%);background:var(--panel);
+       z-index:2001;box-shadow:var(--shadow);display:none;flex-direction:column}
+.sheet.on{display:flex}
+.sheet header{height:auto;min-height:50px;padding:10px 14px;justify-content:space-between}
+.sheet .sc{flex:1 1 auto;overflow-y:auto;padding:14px}
+.sheet .ft{flex:0 0 auto;border-top:1px solid var(--line);padding:11px 14px;display:flex;gap:8px;flex-wrap:wrap}
+.shot{width:100%;border-radius:8px;border:1px solid var(--line);background:var(--bg);margin-bottom:12px}
+table.kv{width:100%;border-collapse:collapse;font-size:13px}
+table.kv td{padding:6px 0;border-bottom:1px solid var(--line);vertical-align:top}
+table.kv td:first-child{color:var(--dim);width:44%}
+.nb{margin-top:14px}
+.nb h4{margin:0 0 7px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--dim)}
+.nb a{display:block;padding:7px 9px;border:1px solid var(--line);border-radius:7px;margin-bottom:5px;
+      text-decoration:none;color:var(--ink);font-size:12.5px}
+.nb a:hover{border-color:var(--accent)}
+.cartrow{display:flex;gap:9px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line)}
+.cartrow img{width:56px;height:40px;object-fit:cover;border-radius:5px;border:1px solid var(--line)}
+.cartrow .x{margin-left:auto;cursor:pointer;color:var(--dim);border:0;background:none;font-size:17px;padding:0 4px}
+.note{background:color-mix(in srgb,var(--warn) 12%,transparent);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent);
+      border-radius:7px;padding:9px 11px;font-size:12.5px;margin-bottom:12px}
+#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#1c2330;color:#fff;
+       padding:9px 15px;border-radius:20px;font-size:13px;z-index:3000;opacity:0;pointer-events:none;
+       transition:opacity .18s}
+#toast.on{opacity:1}
+#boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);
+      z-index:5000;flex-direction:column;gap:10px;text-align:center;padding:24px}
+
+/* ---------- narrow ---------- */
+.seg.mob{display:none}
+@media (max-width:900px){
+  #listpane{width:100%;border-right:0}
+  main.m-map #listpane{display:none}
+  main.m-list #mappane{display:none}
+  .seg.mob{display:flex}
+  #layers{width:190px}
+  .legend{display:none}
+}
+</style>
+
+<div id="boot"><b>Загрузка…</b><div style="color:var(--dim);font-size:13px" id="bootmsg"></div></div>
+
+<header>
+  <div class="brand">Конструкции Алматы <small id="gen"></small></div>
+  <input id="q" placeholder="Поиск по адресу или коду — например «Абая Сейфуллина» или 1356">
+  <div class="seg mob">
+    <button id="vList" class="on">Списком</button>
+    <button id="vMap">На карте</button>
+  </div>
+  <button class="btn cartbtn" id="openCart">Подборка<b id="cartN">0</b></button>
+</header>
+
+<div id="filters">
+  <div class="fgroup"><label>Подрядчик</label><div class="chips" id="fContractor"></div></div>
+  <div class="fgroup"><label>Формат</label><div class="chips" id="fFormat"></div></div>
+  <div class="fgroup"><label>Район</label><select id="fDistrict"></select></div>
+  <div class="fgroup"><label>Зона</label><select id="fZone"></select></div>
+  <div class="fgroup"><label>Улица</label><select id="fStreet"></select></div>
+  <label class="chk"><input type="checkbox" id="fMedian"> на разделительной</label>
+  <label class="chk"><input type="checkbox" id="fPhoto"> только с фото</label>
+  <label class="chk"><input type="checkbox" id="fRetired"> показывать снятые</label>
+  <button class="btn" id="clear">Очистить всё</button>
+  <div id="count"></div>
+</div>
+
+<main class="m-list" id="main">
+  <div id="listpane"><div class="empty">…</div></div>
+  <div id="mappane">
+    <div id="map"></div>
+    <div class="mapbox" id="layers">
+      <h4>Основа</h4>
+      <div class="row"><input type="radio" name="base" id="bOsm" checked><label for="bOsm">Схема OSM</label></div>
+      <div class="row"><input type="radio" name="base" id="bSat"><label for="bSat">Спутник</label></div>
+      <hr>
+      <h4>Слои</h4>
+      <div class="row"><input type="checkbox" id="lMag" checked><label for="lMag">Главные магистрали</label></div>
+      <div class="row"><input type="checkbox" id="lDist"><label for="lDist">Границы районов</label></div>
+      <div class="row"><input type="checkbox" id="lZone"><label for="lZone">Зоны</label></div>
+      <div class="row" style="padding-top:6px"><label for="op" style="font-size:11px;color:var(--dim)">Прозрачность слоёв</label></div>
+      <input type="range" id="op" min="10" max="100" value="70">
+      <hr>
+      <div class="row"><input type="checkbox" id="lClust" checked><label for="lClust">Кластеризация</label></div>
+    </div>
+    <div class="legend" id="legend"></div>
+  </div>
+</main>
+
+<div class="veil" id="veil"></div>
+
+<aside class="sheet" id="sheetCard">
+  <header><b id="cardTitle">—</b><button class="btn" data-close>Закрыть</button></header>
+  <div class="sc" id="cardBody"></div>
+  <div class="ft">
+    <button class="btn primary" id="cardPick">В подборку</button>
+    <button class="btn" id="cardShow">Показать на карте</button>
+  </div>
+</aside>
+
+<aside class="sheet" id="sheetCart">
+  <header><b>Подборка — <span id="cartTitleN">0</span></b><button class="btn" data-close>Закрыть</button></header>
+  <div class="sc" id="cartBody"></div>
+  <div class="ft">
+    <button class="btn primary" id="expPptx">Выгрузить PPTX</button>
+    <button class="btn" id="expXlsx">Выгрузить Excel</button>
+    <button class="btn" id="cartClear">Очистить</button>
+  </div>
+</aside>
+
+<div id="toast"></div>
+
+<script src="vendor/leaflet.js"></script>
+<script src="vendor/leaflet.markercluster.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/pptxgen.bundle.js"></script>
+<script src="data/data.js"></script>
+<script src="geo/magistrals.js" onerror="window.GEO_MAGISTRALS=null"></script>
+<script src="geo/districts.js" onerror="window.GEO_DISTRICTS=null"></script>
+
+<script>
+'use strict';
+
+/* ======================================================================
+   0. Загрузка и проверки
+   ====================================================================== */
+const boot = document.getElementById('boot'), bootmsg = document.getElementById('bootmsg');
+function die(msg){ boot.innerHTML = '<b style="color:#c2410c">Не удалось запустить</b>' +
+  '<div style="max-width:520px;color:var(--dim);font-size:13px;margin-top:8px">' + msg + '</div>'; throw new Error(msg); }
+
+if (typeof L === 'undefined')
+  die('Не загрузилась библиотека Leaflet из папки <code>vendor</code>.<br><br>Запустите один раз:<br><code>powershell -ExecutionPolicy Bypass -File fetch-geo.ps1</code>');
+if (!window.PORTAL_DATA)
+  die('Не найден файл <code>data/data.js</code>.<br><br>Соберите базу:<br><code>powershell -ExecutionPolicy Bypass -File build.ps1</code>');
+
+const D = window.PORTAL_DATA;
+const MAG = window.GEO_MAGISTRALS || null;
+const DIS = window.GEO_DISTRICTS || null;
+
+document.getElementById('gen').textContent = '· обновлено ' + (D.generated || '—');
+
+const byId = new Map();
+const FMT = new Map(D.formats.map(f => [f.id, f]));
+const CON = new Map(D.contractors.map(c => [c.id, c]));
+const LOC = new Map((D.locations || []).map(l => [l.id, l]));
+
+/* ======================================================================
+   1. Геометрия: точка в полигоне (для зон)
+   ====================================================================== */
+function inRing(lon, lat, ring){
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++){
+    const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    if (((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+function inFeature(lon, lat, geom){
+  if (!geom) return false;
+  const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+  for (const poly of polys){
+    if (!poly || !poly.length) continue;
+    if (inRing(lon, lat, poly[0])){
+      let hole = false;
+      for (let h = 1; h < poly.length; h++) if (inRing(lon, lat, poly[h])) { hole = true; break; }
+      if (!hole) return true;
+    }
+  }
+  return false;
+}
+/* зона считается здесь, а не в build.ps1 — чтобы правки границ
+   в админке действовали сразу, без пересборки */
+function computeZones(){
+  const zf = (D.zones && D.zones.features) ? D.zones.features : [];
+  for (const c of D.constructions){
+    if (c.zone) continue;                       // проставлена руками — не трогаем
+    c._zoneAuto = null;
+    for (const f of zf) if (inFeature(c.lon, c.lat, f.geometry)) { c._zoneAuto = f.properties.name; break; }
+  }
+}
+const zoneOf     = c => c.zone || c._zoneAuto || null;
+const districtOf = c => c.districtOverride || c.district || null;
+
+/* ======================================================================
+   2. Подготовка записей
+   ====================================================================== */
+/* В части кодов РТС стоит кириллическая А там, где в остальных латинская A.
+   Глаз не отличает, поиск — отличает. Поэтому в индекс кладём оба написания. */
+const CYR2LAT = { 'А':'A','В':'B','С':'C','Е':'E','Н':'H','К':'K','М':'M','О':'O',
+                  'Р':'P','Т':'T','Х':'X','У':'Y','а':'a','е':'e','о':'o','р':'p','с':'c','у':'y','х':'x' };
+const latinise = s => String(s || '').replace(/[АВСЕНКМОРТХУаеорсух]/g, ch => CYR2LAT[ch] || ch);
+
+for (const c of D.constructions){
+  byId.set(c.id, c);
+  c._fmt = FMT.get(c.format) || { name: c.format, shape: 'circle' };
+  c._con = CON.get(c.contractor) || { name: c.contractor, color: '#888' };
+  const parts = [c.name, c.code, c.address, (c.streets || []).join(' '), (c.landmarks || []).join(' ')]
+                  .filter(Boolean).join(' ');
+  const lat = latinise(parts);
+  c._hay = (lat === parts ? parts : parts + ' ' + lat).toLowerCase() + ' ' + String(c.id).toLowerCase();
+}
+computeZones();
+
+/* ======================================================================
+   3. Фильтры
+   ====================================================================== */
+const S = {
+  q: '', contractors: new Set(), formats: new Set(),
+  district: '', zone: '', street: '',
+  median: false, photo: false, retired: false,
+  cart: new Set(), active: null, limit: 200
+};
+
+function chips(host, items, set, colored){
+  host.innerHTML = '';
+  for (const it of items){
+    const b = document.createElement('div');
+    b.className = 'chip';
+    b.innerHTML = (colored ? '<span class="sw" style="background:' + it.color + '"></span>' : '') +
+                  it.name + ' <span style="opacity:.65">' + it.n + '</span>';
+    b.onclick = () => { set.has(it.id) ? set.delete(it.id) : set.add(it.id); b.classList.toggle('on'); apply(); };
+    host.appendChild(b);
+  }
+}
+function fill(sel, list, label){
+  sel.innerHTML = '<option value="">' + label + '</option>' +
+    list.map(x => '<option value="' + esc(x.v) + '">' + esc(x.t) + '</option>').join('');
+}
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, m =>
+  ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+
+function buildFilters(){
+  const cnt = (fn) => {
+    const m = new Map();
+    for (const c of D.constructions){ if (c.hidden && !S.retired) continue; const k = fn(c);
+      if (Array.isArray(k)) k.forEach(x => x && m.set(x, (m.get(x)||0)+1)); else if (k) m.set(k, (m.get(k)||0)+1); }
+    return m;
+  };
+  const cc = cnt(c => c.contractor), cf = cnt(c => c.format);
+  chips(document.getElementById('fContractor'),
+        D.contractors.filter(x => cc.get(x.id)).map(x => ({ id:x.id, name:x.name, n:cc.get(x.id)||0, color:x.color })),
+        S.contractors, true);
+  chips(document.getElementById('fFormat'),
+        D.formats.filter(x => cf.get(x.id)).map(x => ({ id:x.id, name:x.name, n:cf.get(x.id)||0 })),
+        S.formats, false);
+
+  const dm = cnt(districtOf), zm = cnt(zoneOf), sm = cnt(c => c.streets || []);
+  fill(document.getElementById('fDistrict'),
+       [...dm.keys()].sort((a,b)=>a.localeCompare(b,'ru')).map(k=>({v:k,t:k+' ('+dm.get(k)+')'})),
+       dm.size ? 'Все районы' : 'нет данных — запустите fetch-geo.ps1');
+  fill(document.getElementById('fZone'),
+       [...zm.keys()].sort((a,b)=>a.localeCompare(b,'ru')).map(k=>({v:k,t:k+' ('+zm.get(k)+')'})),
+       zm.size ? 'Все зоны' : 'зоны не заданы — нарисуйте в админке');
+  // улицы: сначала главные магистрали, потом остальные по частоте
+  const majors = new Set((D.streets||[]).filter(s=>s.major).map(s=>s.name));
+  const sl = [...sm.keys()].sort((a,b) => (majors.has(b)?1:0)-(majors.has(a)?1:0) || sm.get(b)-sm.get(a) || a.localeCompare(b,'ru'));
+  fill(document.getElementById('fStreet'),
+       sl.map(k => ({ v:k, t:(majors.has(k)?'★ ':'') + k + ' (' + sm.get(k) + ')' })), 'Все улицы');
+  document.getElementById('fDistrict').value = S.district;
+  document.getElementById('fZone').value = S.zone;
+  document.getElementById('fStreet').value = S.street;
+}
+
+function pass(c){
+  if (c.hidden && !S.retired) return false;
+  if (S.contractors.size && !S.contractors.has(c.contractor)) return false;
+  if (S.formats.size && !S.formats.has(c.format)) return false;
+  if (S.district && districtOf(c) !== S.district) return false;
+  if (S.zone && zoneOf(c) !== S.zone) return false;
+  if (S.street && !(c.streets || []).includes(S.street)) return false;
+  if (S.median && !c.median) return false;
+  if (S.photo && !(c.photos && c.photos.length)) return false;
+  if (S.q){
+    const words = S.q.toLowerCase().split(/\s+/).filter(Boolean);
+    for (const w of words) if (c._hay.indexOf(w) < 0) return false;
+  }
+  return true;
+}
+let shown = [];
+
+/* ======================================================================
+   4. Карта
+   ====================================================================== */
+const map = L.map('map', { center: [D.city.lat, D.city.lon], zoom: D.city.zoom, zoomControl: true, preferCanvas: true });
+const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  { maxZoom: 19, crossOrigin: 'anonymous', attribution: '&copy; OpenStreetMap' }).addTo(map);
+const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  { maxZoom: 19, crossOrigin: 'anonymous', attribution: 'Esri, Maxar, Earthstar Geographics' });
+
+const magLayer  = L.layerGroup();
+const distLayer = L.layerGroup();
+const zoneLayer = L.layerGroup();
+let overlayOpacity = 0.7;
+
+if (MAG && MAG.features){
+  for (const f of MAG.features){
+    const ll = f.geometry.coordinates.map(line => line.map(p => [p[1], p[0]]));
+    L.polyline(ll, { color:'#e8590c', weight:5, opacity:overlayOpacity, lineCap:'round' })
+      .bindTooltip(f.properties.name, { sticky:true }).addTo(magLayer);
+  }
+  magLayer.addTo(map);
+} else {
+  document.getElementById('lMag').disabled = true;
+  document.getElementById('lMag').checked = false;
+  document.getElementById('lMag').parentNode.style.opacity = .45;
+  document.getElementById('lMag').nextElementSibling.title = 'нет geo/magistrals.js — запустите fetch-geo.ps1';
+}
+if (DIS && DIS.features){
+  L.geoJSON(DIS, { style:{ color:'#5b21b6', weight:1.6, fill:true, fillOpacity:.05, opacity:overlayOpacity } })
+    .bindTooltip(l => l.feature.properties.name).addTo(distLayer);
+} else {
+  const el = document.getElementById('lDist');
+  el.disabled = true; el.parentNode.style.opacity = .45;
+  el.nextElementSibling.title = 'нет geo/districts.js — запустите fetch-geo.ps1';
+}
+function drawZones(){
+  zoneLayer.clearLayers();
+  if (D.zones && D.zones.features && D.zones.features.length){
+    L.geoJSON(D.zones, { style: f => ({ color: f.properties.color || '#0f9b4a', weight:1.6,
+      fillOpacity:.10, opacity: overlayOpacity }) })
+      .bindTooltip(l => l.feature.properties.name).addTo(zoneLayer);
+  } else {
+    const el = document.getElementById('lZone');
+    el.disabled = true; el.parentNode.style.opacity = .45;
+    el.nextElementSibling.title = 'зоны не заданы — нарисуйте их в admin.html';
+  }
+}
+drawZones();
+
+/* --- иконки: цвет = подрядчик, форма = формат --- */
+const SHAPES = {
+  circle:  '<circle cx="11" cy="11" r="7.5"/>',
+  square:  '<rect x="4" y="4" width="14" height="14" rx="2"/>',
+  triangle:'<path d="M11 3.2 19 18H3z"/>',
+  star:    '<path d="M11 2.6l2.6 5.7 6.2.7-4.6 4.2 1.2 6.1L11 16.4l-5.4 2.9 1.2-6.1L2.2 9l6.2-.7z"/>',
+  diamond: '<path d="M11 2.5 19.5 11 11 19.5 2.5 11z"/>'
+};
+const iconCache = new Map();
+function icon(c, sel){
+  const key = c.contractor + '|' + c.format + '|' + (sel ? 1 : 0);
+  if (iconCache.has(key)) return iconCache.get(key);
+  const shape = SHAPES[c._fmt.shape] || SHAPES.circle;
+  const html = '<span class="mk' + (sel ? ' sel' : '') + '"><svg width="22" height="22" viewBox="0 0 22 22">' +
+    '<g fill="' + c._con.color + '" stroke="#fff" stroke-width="1.7">' + shape + '</g></svg></span>';
+  const ic = L.divIcon({ html, className:'', iconSize:[22,22], iconAnchor:[11,11] });
+  iconCache.set(key, ic); return ic;
+}
+
+let cluster = null, plain = null;
+function markerHost(){
+  const useCluster = document.getElementById('lClust').checked;
+  if (useCluster){
+    if (plain) { map.removeLayer(plain); plain = null; }
+    if (!cluster){
+      cluster = L.markerClusterGroup({ maxClusterRadius: 46, spiderfyOnMaxZoom: true,
+        showCoverageOnHover: false, disableClusteringAtZoom: 17 });
+      map.addLayer(cluster);
+    }
+    return cluster;
+  }
+  if (cluster) { map.removeLayer(cluster); cluster = null; }
+  if (!plain) { plain = L.layerGroup().addTo(map); }
+  return plain;
+}
+const mkOf = new Map();
+function drawMarkers(){
+  const host = markerHost();
+  host.clearLayers(); mkOf.clear();
+  const batch = [];
+  for (const c of shown){
+    const m = L.marker([c.lat, c.lon], { icon: icon(c, S.active === c.id), title: c.name });
+    m.on('click', () => openCard(c.id));
+    mkOf.set(c.id, m); batch.push(m);
+  }
+  if (host.addLayers) host.addLayers(batch); else batch.forEach(m => host.addLayer(m));
+}
+
+/* --- контролы слоёв --- */
+document.getElementById('bOsm').onchange = () => { map.removeLayer(sat); osm.addTo(map); };
+document.getElementById('bSat').onchange = () => { map.removeLayer(osm); sat.addTo(map); };
+const tog = (id, layer) => document.getElementById(id).onchange = e =>
+  e.target.checked ? layer.addTo(map) : map.removeLayer(layer);
+tog('lMag', magLayer); tog('lDist', distLayer); tog('lZone', zoneLayer);
+document.getElementById('op').oninput = e => {
+  overlayOpacity = e.target.value / 100;
+  [magLayer, distLayer, zoneLayer].forEach(g => g.eachLayer(l => {
+    if (l.setStyle) l.setStyle({ opacity: overlayOpacity });
+    if (l.eachLayer) l.eachLayer(x => x.setStyle && x.setStyle({ opacity: overlayOpacity }));
+  }));
+};
+document.getElementById('lClust').onchange = drawMarkers;
+
+/* легенда */
+(function legend(){
+  const h = document.getElementById('legend');
+  h.innerHTML = '<div style="font-weight:600;margin-bottom:4px">Обозначения</div>' +
+    D.contractors.map(c => '<div class="r"><span style="width:10px;height:10px;border-radius:50%;background:' +
+      c.color + ';display:inline-block"></span>' + c.name + '</div>').join('') +
+    '<div style="height:5px"></div>' +
+    D.formats.map(f => '<div class="r"><svg width="15" height="15" viewBox="0 0 22 22" style="transform:scale(1.1)">' +
+      '<g fill="var(--dim)">' + (SHAPES[f.shape]||SHAPES.circle) + '</g></svg>' + f.name + '</div>').join('');
+})();
+
+/* ======================================================================
+   5. Список
+   ====================================================================== */
+const listpane = document.getElementById('listpane');
+function renderList(){
+  if (!shown.length){ listpane.innerHTML = '<div class="empty">Ничего не найдено.<br>Ослабьте фильтры или очистите поиск.</div>'; return; }
+  const part = shown.slice(0, S.limit);
+  const html = part.map(c => {
+    const th = (c.photos && c.photos.length) ? c.photos[0].replace('photos/full/','photos/thumb/') : null;
+    return '<div class="card' + (S.active === c.id ? ' act' : '') + '" data-id="' + esc(c.id) + '">' +
+      (th ? '<img class="ph" loading="lazy" src="' + esc(th) + '" alt="">'
+          : '<div class="ph none">нет фото</div>') +
+      '<div class="body"><div class="t">' + esc(c.address || c.name) + '</div>' +
+      '<div class="m"><span class="tag c" style="background:' + c._con.color + '">' + esc(c._con.name) + '</span>' +
+      '<span class="tag">' + esc(c._fmt.name) + '</span>' +
+      (c.code ? '<span>' + esc(c.code) + '</span>' : '') +
+      (c.direction ? '<span>' + esc(c.direction) + '</span>' : '') +
+      (c.median ? '<span class="tag">раздел.</span>' : '') +
+      (c.hidden ? '<span class="tag" style="color:var(--warn)">снята</span>' : '') +
+      '</div></div>' +
+      '<input class="pick" type="checkbox" ' + (S.cart.has(c.id) ? 'checked' : '') + ' data-pick="' + esc(c.id) + '">' +
+      '</div>';
+  }).join('');
+  listpane.innerHTML = html + (shown.length > S.limit
+    ? '<div class="more"><button class="btn" id="more">Показать ещё ' +
+      Math.min(200, shown.length - S.limit) + ' из ' + (shown.length - S.limit) + '</button></div>' : '');
+  const mb = document.getElementById('more');
+  if (mb) mb.onclick = () => { S.limit += 200; renderList(); };
+}
+listpane.addEventListener('click', e => {
+  const pick = e.target.closest('[data-pick]');
+  if (pick){ e.stopPropagation(); toggleCart(pick.dataset.pick); return; }
+  const card = e.target.closest('.card');
+  if (card) openCard(card.dataset.id);
+});
+
+/* ======================================================================
+   6. Применение фильтров
+   ====================================================================== */
+function apply(){
+  shown = D.constructions.filter(pass);
+  S.limit = 200;
+  document.getElementById('count').innerHTML =
+    'Найдено: ' + shown.length + ' <span>из ' + D.constructions.length + '</span>';
+  renderList(); drawMarkers();
+}
+document.getElementById('q').oninput = e => { S.q = e.target.value.trim(); apply(); };
+document.getElementById('fDistrict').onchange = e => { S.district = e.target.value; apply(); };
+document.getElementById('fZone').onchange     = e => { S.zone = e.target.value; apply(); };
+document.getElementById('fStreet').onchange   = e => { S.street = e.target.value; apply(); };
+document.getElementById('fMedian').onchange   = e => { S.median = e.target.checked; apply(); };
+document.getElementById('fPhoto').onchange    = e => { S.photo = e.target.checked; apply(); };
+document.getElementById('fRetired').onchange  = e => { S.retired = e.target.checked; buildFilters(); apply(); };
+document.getElementById('clear').onclick = () => {
+  S.q = ''; S.contractors.clear(); S.formats.clear();
+  S.district = S.zone = S.street = ''; S.median = S.photo = S.retired = false;
+  document.getElementById('q').value = '';
+  ['fMedian','fPhoto','fRetired'].forEach(i => document.getElementById(i).checked = false);
+  buildFilters(); apply();
+};
+
+/* ======================================================================
+   7. Карточка
+   ====================================================================== */
+const veil = document.getElementById('veil');
+const sheetCard = document.getElementById('sheetCard'), sheetCart = document.getElementById('sheetCart');
+function closeSheets(){ veil.classList.remove('on'); sheetCard.classList.remove('on'); sheetCart.classList.remove('on'); }
+veil.onclick = closeSheets;
+document.querySelectorAll('[data-close]').forEach(b => b.onclick = closeSheets);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheets(); });
+
+function row(k, v){ return v ? '<tr><td>' + esc(k) + '</td><td>' + v + '</td></tr>' : ''; }
+function openCard(id){
+  const c = byId.get(id); if (!c) return;
+  const prev = S.active;
+  S.active = id;
+  document.getElementById('cardTitle').textContent = c.address || c.name;
+  const ph = (c.photos && c.photos.length ? c.photos : []).concat(c.extraPhotos || []);
+  let html = '';
+  if (!ph.length) html += '<div class="note">Фотографии нет — этой конструкции не было в адресной программе. Добавьте фото через админку.</div>';
+  html += ph.map(p => '<img class="shot" src="' + esc(p) + '" alt="" loading="lazy">').join('');
+  html += '<table class="kv">' +
+    row('Подрядчик', '<b>' + esc(c._con.name) + '</b>') +
+    row('Формат', esc(c._fmt.name)) +
+    row('Код', c.code ? '<code>' + esc(c.code) + '</code>' : '') +
+    row('Полное название', esc(c.name)) +
+    row('Улицы', (c.streets || []).map(esc).join(' × ')) +
+    row('Ориентиры', (c.landmarks || []).map(esc).join(', ')) +
+    row('Направление', esc(c.direction)) +
+    row('Разделительная полоса', c.median ? 'да' : '') +
+    row('Сторона', esc(c.side)) +
+    row('Район', esc(districtOf(c))) +
+    row('Зона', esc(zoneOf(c))) +
+    row('Координаты', c.lat.toFixed(6) + ', ' + c.lon.toFixed(6)) +
+    row('Размер', esc(c.size)) + row('Цена', esc(c.price)) +
+    row('Подсветка', esc(c.lighting)) + row('Разрешение', esc(c.resolution)) +
+    row('Статус', esc(c.status) + (c.statusDate ? ' <span style="color:var(--dim)">(' + esc(c.statusDate) + ')</span>' : '')) +
+    row('Примечание', esc(c.notes)) +
+    row('Каталог подрядчика', c.catalogUrl ? '<a href="' + esc(c.catalogUrl) + '" target="_blank" rel="noopener">открыть</a>' : '') +
+    row('В программе', c.inProgram === false ? '<span style="color:var(--warn)">снята с программы</span>' : 'да') +
+    '</table>';
+
+  /* соседи по локации — решение вопроса 1: не склейка, а соседство */
+  const loc = LOC.get(c.locationId);
+  if (loc && loc.items.length > 1){
+    const others = loc.items.filter(x => x !== id).map(x => byId.get(x)).filter(Boolean);
+    html += '<div class="nb"><h4>На этой же локации — ' + esc(loc.key) + '</h4>' +
+      others.map(o => '<a href="#" data-goto="' + esc(o.id) + '">' +
+        '<span class="tag c" style="background:' + o._con.color + '">' + esc(o._con.name) + '</span> ' +
+        esc(o._fmt.name) + ' · ' + esc(o.code || '') + ' · ' + esc(o.direction || '') + '</a>').join('') +
+      '<div style="font-size:11.5px;color:var(--dim);margin-top:6px">Это разные физические конструкции на одном перекрёстке, а не дубли одной.</div></div>';
+  }
+  document.getElementById('cardBody').innerHTML = html;
+  document.getElementById('cardBody').querySelectorAll('[data-goto]').forEach(a =>
+    a.onclick = ev => { ev.preventDefault(); openCard(a.dataset.goto); });
+
+  const pb = document.getElementById('cardPick');
+  const sync = () => pb.textContent = S.cart.has(id) ? 'Убрать из подборки' : 'В подборку';
+  sync(); pb.onclick = () => { toggleCart(id); sync(); };
+  document.getElementById('cardShow').onclick = () => { closeSheets(); focusOn(id); };
+
+  veil.classList.add('on'); sheetCard.classList.add('on');
+
+  /* подсвечиваем только два маркера и две строки списка, а не все 676 */
+  for (const pid of [prev, id]){
+    if (!pid) continue;
+    const pc = byId.get(pid), m = mkOf.get(pid);
+    if (pc && m) m.setIcon(icon(pc, S.active === pid));
+    const row = listpane.querySelector('.card[data-id="' + cssEsc(pid) + '"]');
+    if (row) row.classList.toggle('act', S.active === pid);
+  }
+}
+function focusOn(id){
+  const c = byId.get(id); if (!c) return;
+  document.getElementById('main').className = 'm-map';
+  fitted = true;                 // иначе отложенный fitToData перебьёт setView
+  syncSeg();
+  map.invalidateSize();
+  map.setView([c.lat, c.lon], 17, { animate: true });
+  const m = mkOf.get(id);
+  if (m && cluster && cluster.zoomToShowLayer) cluster.zoomToShowLayer(m, () => m.openTooltip && m.openTooltip());
+}
+
+/* ======================================================================
+   8. Подборка и выгрузка
+   ====================================================================== */
+function toggleCart(id){
+  S.cart.has(id) ? S.cart.delete(id) : S.cart.add(id);
+  document.getElementById('cartN').textContent = S.cart.size;
+  document.getElementById('cartTitleN').textContent = S.cart.size;
+  /* точечно обновляем галочку, а не перерисовываем список —
+     иначе сбрасывается прокрутка и «отметить десять подряд» превращается в мучение */
+  const cb = listpane.querySelector('[data-pick="' + cssEsc(id) + '"]');
+  if (cb) cb.checked = S.cart.has(id);
+  if (sheetCart.classList.contains('on')) renderCart();
+}
+function cssEsc(s){ return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/["\\]/g, '\\$&'); }
+function renderCart(){
+  const host = document.getElementById('cartBody');
+  if (!S.cart.size){ host.innerHTML = '<div class="empty">Подборка пуста.<br>Отмечайте конструкции галочкой в списке.</div>'; return; }
+  const items = [...S.cart].map(id => byId.get(id)).filter(Boolean);
+  const locs = new Map();
+  for (const c of items){ const k = c.locationId; if (!locs.has(k)) locs.set(k, []); locs.get(k).push(c); }
+  const dup = [...locs.entries()].filter(([, v]) => v.length > 1);
+  let warn = '';
+  if (dup.length){
+    warn = '<div class="note"><b>Пересечение по локациям.</b> В подборке есть конструкции, стоящие на одном перекрёстке — они бьют по одному и тому же потоку:<br>' +
+      dup.map(([k, v]) => '· ' + esc((LOC.get(k) || {}).key || '—') + ' — ' + v.length + ' шт.').join('<br>') + '</div>';
+  }
+  host.innerHTML = warn + items.map((c, i) => {
+    const th = (c.photos && c.photos.length) ? c.photos[0].replace('photos/full/','photos/thumb/') : null;
+    return '<div class="cartrow">' + (th ? '<img src="' + esc(th) + '" alt="">' : '<div class="ph none" style="width:56px;height:40px"></div>') +
+      '<div style="min-width:0"><div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+      (i+1) + '. ' + esc(c.address || c.name) + '</div>' +
+      '<div style="font-size:11px;color:var(--dim)">' + esc(c._con.name) + ' · ' + esc(c._fmt.name) + ' · ' + esc(c.code||'') + '</div></div>' +
+      '<button class="x" data-del="' + esc(c.id) + '" title="убрать">×</button></div>';
+  }).join('');
+  host.querySelectorAll('[data-del]').forEach(b => b.onclick = () => toggleCart(b.dataset.del));
+}
+document.getElementById('openCart').onclick = () => { renderCart(); veil.classList.add('on'); sheetCart.classList.add('on'); };
+document.getElementById('cartClear').onclick = () => { S.cart.clear();
+  document.getElementById('cartN').textContent = 0; document.getElementById('cartTitleN').textContent = 0;
+  renderCart(); renderList(); };
+
+function toast(m, ms){ const t = document.getElementById('toast'); t.textContent = m; t.classList.add('on');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), ms || 2600); }
+
+/* --- можно ли вытащить пиксели локальной картинки (нужно для фото в PPTX) --- */
+let canReadLocalImages = null;
+function probeCanvas(){
+  return new Promise(res => {
+    const withPhoto = D.constructions.find(c => c.photos && c.photos.length);
+    if (!withPhoto) return res(false);
+    const im = new Image();
+    im.onload = () => {
+      try {
+        const cv = document.createElement('canvas');
+        cv.width = 8; cv.height = 8;
+        cv.getContext('2d').drawImage(im, 0, 0, 8, 8);
+        cv.toDataURL('image/jpeg', .5);
+        res(true);
+      } catch (e) { res(false); }
+    };
+    im.onerror = () => res(false);
+    im.src = withPhoto.photos[0].replace('photos/full/','photos/thumb/');
+  });
+}
+function imgToDataURL(src, maxW){
+  return new Promise(res => {
+    const im = new Image();
+    im.onload = () => {
+      try {
+        const w = Math.min(maxW || im.naturalWidth, im.naturalWidth);
+        const h = Math.round(im.naturalHeight * w / im.naturalWidth);
+        const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(im, 0, 0, w, h);
+        res(cv.toDataURL('image/jpeg', .82));
+      } catch (e) { res(null); }
+    };
+    im.onerror = () => res(null);
+    im.src = src;
+  });
+}
+
+/* --- статичная карта подборки: тайлы OSM + нумерованные метки --- */
+const TS = 256;
+function lonToX(lon, z){ return (lon + 180) / 360 * Math.pow(2, z) * TS; }
+function latToY(lat, z){
+  const s = Math.sin(lat * Math.PI / 180);
+  return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * Math.pow(2, z) * TS;
+}
+async function staticMap(items, W, H){
+  if (!items.length) return null;
+  const lats = items.map(c => c.lat), lons = items.map(c => c.lon);
+  const pad = 0.004;
+  const b = { n: Math.max(...lats)+pad, s: Math.min(...lats)-pad, e: Math.max(...lons)+pad, w: Math.min(...lons)-pad };
+  let z = 17;
+  for (; z > 8; z--){
+    if ((lonToX(b.e,z)-lonToX(b.w,z)) <= W && (latToY(b.s,z)-latToY(b.n,z)) <= H) break;
+  }
+  const cx = (lonToX(b.w,z)+lonToX(b.e,z))/2, cy = (latToY(b.n,z)+latToY(b.s,z))/2;
+  const ox = cx - W/2, oy = cy - H/2;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#e8e6e1'; g.fillRect(0,0,W,H);
+
+  const x0 = Math.floor(ox/TS), x1 = Math.floor((ox+W)/TS);
+  const y0 = Math.floor(oy/TS), y1 = Math.floor((oy+H)/TS);
+  const jobs = [];
+  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++){
+    jobs.push(new Promise(res => {
+      const im = new Image(); im.crossOrigin = 'anonymous';
+      im.onload  = () => { try { g.drawImage(im, x*TS-ox, y*TS-oy); } catch(e){} res(); };
+      im.onerror = () => res();
+      im.src = 'https://tile.openstreetmap.org/' + z + '/' + x + '/' + y + '.png';
+    }));
+  }
+  await Promise.all(jobs);
+
+  items.forEach((c, i) => {
+    const px = lonToX(c.lon, z) - ox, py = latToY(c.lat, z) - oy;
+    g.beginPath(); g.arc(px, py, 12, 0, Math.PI*2);
+    g.fillStyle = c._con.color; g.fill();
+    g.lineWidth = 2.5; g.strokeStyle = '#fff'; g.stroke();
+    g.fillStyle = '#fff'; g.font = 'bold 13px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(String(i+1), px, py+.5);
+  });
+  g.fillStyle = 'rgba(255,255,255,.82)'; g.fillRect(0, H-16, 210, 16);
+  g.fillStyle = '#333'; g.font = '11px Arial'; g.textAlign = 'left'; g.textBaseline = 'middle';
+  g.fillText('© OpenStreetMap contributors', 5, H-8);
+  try { return cv.toDataURL('image/jpeg', .85); } catch(e){ return null; }
+}
+
+const stamp = () => new Date().toISOString().slice(0,10);
+
+/* --- Excel --- */
+document.getElementById('expXlsx').onclick = () => {
+  if (!S.cart.size) return toast('Подборка пуста');
+  const items = [...S.cart].map(id => byId.get(id)).filter(Boolean);
+  const rows = items.map((c, i) => ({
+    '№': i+1, 'Подрядчик': c._con.name, 'Формат': c._fmt.name, 'Код': c.code || '',
+    'Адрес': c.address || c.name, 'Улицы': (c.streets||[]).join(' × '),
+    'Ориентиры': (c.landmarks||[]).join(', '), 'Направление': c.direction || '',
+    'Раздел. полоса': c.median ? 'да' : '', 'Сторона': c.side || '',
+    'Район': districtOf(c) || '', 'Зона': zoneOf(c) || '',
+    'Широта': c.lat, 'Долгота': c.lon,
+    'Размер': c.size || '', 'Цена': c.price || '', 'Подсветка': c.lighting || '',
+    'Разрешение': c.resolution || '', 'Статус': c.status || '',
+    'Фото': (c.photos && c.photos.length) ? 'есть' : 'нет',
+    'Полное название': c.name, 'Каталог': c.catalogUrl || ''
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [{wch:4},{wch:10},{wch:20},{wch:20},{wch:42},{wch:26},{wch:22},{wch:14},
+                 {wch:13},{wch:15},{wch:14},{wch:14},{wch:11},{wch:11},{wch:10},{wch:10},
+                 {wch:12},{wch:13},{wch:12},{wch:7},{wch:52},{wch:26}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Подборка');
+  XLSX.writeFile(wb, 'Подборка_' + stamp() + '.xlsx');
+  toast('Excel выгружен');
+};
+
+/* --- PPTX: карта подборки + слайд на каждую конструкцию --- */
+document.getElementById('expPptx').onclick = async () => {
+  if (!S.cart.size) return toast('Подборка пуста');
+  const btn = document.getElementById('expPptx');
+  btn.disabled = true; const old = btn.textContent; btn.textContent = 'Собираю…';
+  try {
+    if (canReadLocalImages === null) canReadLocalImages = await probeCanvas();
+    const items = [...S.cart].map(id => byId.get(id)).filter(Boolean);
+    const pptx = new PptxGenJS();
+    pptx.layout = 'LAYOUT_16x9';                       // 10 x 5.625 дюйма
+    pptx.title = 'Подборка конструкций — Алматы';
+
+    /* титул с картой */
+    const s0 = pptx.addSlide();
+    s0.addText('Подборка конструкций · Алматы', { x:.4, y:.28, w:9.2, h:.5, fontSize:22, bold:true, color:'1C2330' });
+    s0.addText(items.length + ' поверхностей · ' + stamp(), { x:.4, y:.78, w:9.2, h:.3, fontSize:12, color:'6B7481' });
+    const mapImg = canReadLocalImages ? await staticMap(items, 1280, 700) : null;
+    if (mapImg) s0.addImage({ data: mapImg, x:.4, y:1.2, w:6.4, h:3.5 });
+    else s0.addText('Карта не вставлена: браузер не отдал пиксели. Откройте портал через «Портал.cmd».',
+                    { x:.4, y:1.2, w:6.4, h:.6, fontSize:11, color:'C2410C' });
+    s0.addText(items.map((c,i) => (i+1) + '. ' + (c.address || c.name) + '  —  ' + c._con.name + ', ' + c._fmt.name).join('\n'),
+      { x:6.95, y:1.2, w:2.65, h:3.9, fontSize:7.5, color:'1C2330', lineSpacingMultiple:1.15 });
+
+    /* по слайду на конструкцию */
+    for (let i = 0; i < items.length; i++){
+      const c = items[i];
+      const s = pptx.addSlide();
+      s.addText((i+1) + '. ' + (c.address || c.name),
+        { x:.35, y:.22, w:9.3, h:.42, fontSize:16, bold:true, color:'1C2330' });
+      s.addText(c._con.name + ' · ' + c._fmt.name + (c.code ? ' · ' + c.code : ''),
+        { x:.35, y:.66, w:9.3, h:.28, fontSize:11, color:'6B7481' });
+
+      let img = null;
+      const src = (c.photos && c.photos.length) ? c.photos[0] : ((c.extraPhotos||[])[0] || null);
+      if (src && canReadLocalImages) img = await imgToDataURL(src, 1400);
+      if (img) s.addImage({ data: img, x:.35, y:1.05, w:6.2, h:4.15, sizing:{ type:'contain', w:6.2, h:4.15 } });
+      else {
+        s.addShape(pptx.ShapeType.rect, { x:.35, y:1.05, w:6.2, h:4.15, fill:{ color:'F0F1F3' }, line:{ color:'E2E5EA' } });
+        s.addText(src ? 'фото не вставлено' : 'фотографии нет',
+          { x:.35, y:2.9, w:6.2, h:.4, fontSize:12, color:'98A2B0', align:'center' });
+      }
+
+      const kv = [
+        ['Улицы', (c.streets||[]).join(' × ')], ['Ориентиры', (c.landmarks||[]).join(', ')],
+        ['Направление', c.direction], ['Разделительная', c.median ? 'да' : ''],
+        ['Сторона', c.side], ['Район', districtOf(c)], ['Зона', zoneOf(c)],
+        ['Размер', c.size], ['Цена', c.price], ['Подсветка', c.lighting],
+        ['Разрешение', c.resolution], ['Статус', c.status],
+        ['Координаты', c.lat.toFixed(5) + ', ' + c.lon.toFixed(5)]
+      ].filter(r => r[1]);
+      s.addTable(kv.map(r => [
+          { text: r[0], options:{ fontSize:9, color:'6B7481', bold:false } },
+          { text: String(r[1]), options:{ fontSize:9, color:'1C2330' } }]),
+        { x:6.75, y:1.05, w:2.9, colW:[1.15,1.75], border:{ type:'solid', color:'E9EBEF', pt:.5 }, autoPage:false });
+
+      if (c.notes) s.addText(String(c.notes), { x:6.75, y:4.75, w:2.9, h:.6, fontSize:8, color:'6B7481' });
+    }
+
+    await pptx.writeFile({ fileName: 'Подборка_' + stamp() + '.pptx' });
+    toast(canReadLocalImages ? 'PPTX выгружен' : 'PPTX выгружен, но без фото — см. Портал.cmd', 4200);
+  } catch (e){
+    console.error(e); toast('Ошибка выгрузки: ' + e.message, 5000);
+  } finally { btn.disabled = false; btn.textContent = old; }
+};
+
+/* ======================================================================
+   9. Переключатель список/карта, старт
+   ====================================================================== */
+/* Подгонять вид можно только когда у контейнера карты есть размеры.
+   На узком экране карта скрыта по умолчанию, и fitBounds по нулевой высоте
+   уводит Leaflet на zoom 0 — весь мир и одна метка «676». */
+let fitted = false;
+function fitToData(){
+  const el = map.getContainer();
+  if (!el.clientWidth || !el.clientHeight) return false;
+  map.invalidateSize();
+  if (!shown.length) return false;
+  map.fitBounds(L.latLngBounds(shown.map(c => [c.lat, c.lon])).pad(.04));
+  fitted = true;
+  return true;
+}
+if (window.ResizeObserver){
+  new ResizeObserver(() => { if (!fitted) fitToData(); }).observe(document.getElementById('mappane'));
+}
+
+function syncSeg(){
+  const isMap = document.getElementById('main').classList.contains('m-map');
+  document.getElementById('vMap').classList.toggle('on', isMap);
+  document.getElementById('vList').classList.toggle('on', !isMap);
+  if (isMap) setTimeout(() => { map.invalidateSize(); if (!fitted) fitToData(); }, 60);
+}
+document.getElementById('vList').onclick = () => { document.getElementById('main').className = 'm-list'; syncSeg(); };
+document.getElementById('vMap').onclick  = () => { document.getElementById('main').className = 'm-map';  syncSeg(); };
+if (window.innerWidth > 900) document.getElementById('main').className = '';
+syncSeg();
+
+buildFilters();
+apply();
+fitToData();          // на широком экране сработает сразу, на узком — по ResizeObserver
+boot.style.display = 'none';
+
+probeCanvas().then(ok => {
+  canReadLocalImages = ok;
+  if (!ok) console.warn('Браузер не отдаёт пиксели локальных картинок — фото в PPTX не попадут. Откройте портал через Портал.cmd');
+});
+</script>
