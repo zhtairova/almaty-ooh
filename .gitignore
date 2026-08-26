@@ -17,6 +17,7 @@ build.ps1
 fetch-geo.ps1
 Портал.cmd
 attach-cc-photos.ps1
+retry-citix-photos.ps1
 
 # Служебное
 *.pptx
