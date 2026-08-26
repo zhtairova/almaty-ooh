@@ -285,6 +285,17 @@ document.getElementById('gen').textContent = '· обновлено ' + (D.gener
 
 const byId = new Map();
 const FMT = new Map(D.formats.map(f => [f.id, f]));
+/* Фильтр по формату группирует форматы разных подрядчиков с одним и тем же
+   названием в один чип (иначе «Ситиборд» НРР и «Ситиборд» Creative City были
+   бы двумя одинаковыми на вид кнопками). LED_MERGE — ручное объединение
+   LED экрана и Digital board в одну кнопку, т.к. это один и тот же тип
+   конструкции у разных подрядчиков. Карточка конструкции и остальные места
+   (админка, экспорт) по-прежнему показывают исходное имя формата. */
+const FORMAT_GROUP_OVERRIDE = { led: 'LED экран', cc_led: 'LED экран', cc_db: 'LED экран' };
+function formatGroupKey(fid){
+  const f = FMT.get(fid);
+  return FORMAT_GROUP_OVERRIDE[fid] || (f ? f.name : fid);
+}
 const CON = new Map(D.contractors.map(c => [c.id, c]));
 const LOC = new Map((D.locations || []).map(l => [l.id, l]));
 
@@ -392,9 +403,14 @@ function buildFilters(){
   chips(document.getElementById('fContractor'),
         D.contractors.filter(x => cc.get(x.id)).map(x => ({ id:x.id, name:x.name, n:cc.get(x.id)||0, color:x.color })),
         S.contractors, true);
-  chips(document.getElementById('fFormat'),
-        D.formats.filter(x => cf.get(x.id)).map(x => ({ id:x.id, name:x.name, n:cf.get(x.id)||0 })),
-        S.formats, false);
+  const fmtGroups = new Map();   // groupKey -> { id, name, n }
+  for (const f of D.formats){
+    const n = cf.get(f.id) || 0; if (!n) continue;
+    const key = formatGroupKey(f.id);
+    if (!fmtGroups.has(key)) fmtGroups.set(key, { id:key, name:key, n:0 });
+    fmtGroups.get(key).n += n;
+  }
+  chips(document.getElementById('fFormat'), [...fmtGroups.values()], S.formats, false);
 
   const dm = cnt(districtOf), zm = cnt(zoneOf), sm = cnt(c => c.streets || []);
   fill(document.getElementById('fDistrict'),
@@ -416,7 +432,7 @@ function buildFilters(){
 function pass(c){
   if (c.hidden && !S.retired) return false;
   if (S.contractors.size && !S.contractors.has(c.contractor)) return false;
-  if (S.formats.size && !S.formats.has(c.format)) return false;
+  if (S.formats.size && !S.formats.has(formatGroupKey(c.format))) return false;
   if (S.district && districtOf(c) !== S.district) return false;
   if (S.zone && zoneOf(c) !== S.zone) return false;
   if (S.street && !(c.streets || []).includes(S.street)) return false;
