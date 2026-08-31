@@ -192,11 +192,12 @@ table.kv td:first-child{color:var(--dim);width:44%}
 </header>
 
 <div id="filters">
-  <div class="fgroup"><label>Подрядчик</label><div class="chips" id="fContractor"></div></div>
+  <div class="fgroup"><label>Город</label><div class="chips" id="fCity"></div></div>
   <div class="fgroup"><label>Формат</label><div class="chips" id="fFormat"></div></div>
   <div class="fgroup"><label>Район</label><select id="fDistrict"></select></div>
   <div class="fgroup"><label>Зона</label><select id="fZone"></select></div>
   <div class="fgroup"><label>Улица</label><select id="fStreet"></select></div>
+  <div class="fgroup"><label>Подрядчик</label><select id="fContractor"></select></div>
   <div class="fgroup"><label>Цена, тг</label>
     <input id="fPriceMin" type="number" placeholder="от" style="width:92px" min="0" step="10000">
     <input id="fPriceMax" type="number" placeholder="до" style="width:92px" min="0" step="10000">
@@ -297,6 +298,7 @@ function formatGroupKey(fid){
   return FORMAT_GROUP_OVERRIDE[fid] || (f ? f.name : fid);
 }
 const CON = new Map(D.contractors.map(c => [c.id, c]));
+const CITY = new Map((D.cities || []).map(c => [c.id, c]));
 const LOC = new Map((D.locations || []).map(l => [l.id, l]));
 
 /* ======================================================================
@@ -360,7 +362,7 @@ computeZones();
    3. Фильтры
    ====================================================================== */
 const S = {
-  q: '', contractors: new Set(), formats: new Set(),
+  q: '', contractor: '', formats: new Set(), cities: new Set(),
   district: '', zone: '', street: '',
   priceMin: null, priceMax: null,
   median: false, photo: false, retired: false,
@@ -399,10 +401,20 @@ function buildFilters(){
       if (Array.isArray(k)) k.forEach(x => x && m.set(x, (m.get(x)||0)+1)); else if (k) m.set(k, (m.get(k)||0)+1); }
     return m;
   };
-  const cc = cnt(c => c.contractor), cf = cnt(c => c.format);
-  chips(document.getElementById('fContractor'),
-        D.contractors.filter(x => cc.get(x.id)).map(x => ({ id:x.id, name:x.name, n:cc.get(x.id)||0, color:x.color })),
-        S.contractors, true);
+  const cc = cnt(c => c.contractor), cf = cnt(c => c.format), ci = cnt(c => c.city);
+  // Город показывает ВСЕ известные города, даже с нулём точек (Астана и т.п.
+  // заведены заранее, под них ещё нет данных) — в отличие от Формата/Подрядчика,
+  // где пустые варианты скрыты, тут это самоцель фильтра.
+  chips(document.getElementById('fCity'),
+        (D.cities || []).map(x => ({ id:x.id, name:x.name, n:ci.get(x.id)||0 })),
+        S.cities, false);
+  // Подрядчик — обычный выпадающий список (как Район/Зона/Улица), не сужается
+  // выбранным городом: остальные такие списки в этой панели тоже не сужают
+  // друг друга, остаёмся последовательны с этим поведением.
+  fill(document.getElementById('fContractor'),
+       D.contractors.filter(x => cc.get(x.id)).map(x => ({ v:x.id, t:x.name+' ('+cc.get(x.id)+')' })),
+       'Все подрядчики');
+  document.getElementById('fContractor').value = S.contractor;
   const fmtGroups = new Map();   // groupKey -> { id, name, n }
   for (const f of D.formats){
     const n = cf.get(f.id) || 0; if (!n) continue;
@@ -431,7 +443,8 @@ function buildFilters(){
 
 function pass(c){
   if (c.hidden && !S.retired) return false;
-  if (S.contractors.size && !S.contractors.has(c.contractor)) return false;
+  if (S.contractor && c.contractor !== S.contractor) return false;
+  if (S.cities.size && !S.cities.has(c.city)) return false;
   if (S.formats.size && !S.formats.has(formatGroupKey(c.format))) return false;
   if (S.district && districtOf(c) !== S.district) return false;
   if (S.zone && zoneOf(c) !== S.zone) return false;
@@ -626,6 +639,7 @@ function apply(){
   renderList(); drawMarkers();
 }
 document.getElementById('q').oninput = e => { S.q = e.target.value.trim(); apply(); };
+document.getElementById('fContractor').onchange = e => { S.contractor = e.target.value; apply(); };
 document.getElementById('fDistrict').onchange = e => { S.district = e.target.value; apply(); };
 document.getElementById('fZone').onchange     = e => { S.zone = e.target.value; apply(); };
 document.getElementById('fStreet').onchange   = e => { S.street = e.target.value; apply(); };
@@ -635,7 +649,7 @@ document.getElementById('fMedian').onchange   = e => { S.median = e.target.check
 document.getElementById('fPhoto').onchange    = e => { S.photo = e.target.checked; apply(); };
 document.getElementById('fRetired').onchange  = e => { S.retired = e.target.checked; buildFilters(); apply(); };
 document.getElementById('clear').onclick = () => {
-  S.q = ''; S.contractors.clear(); S.formats.clear();
+  S.q = ''; S.contractor = ''; S.formats.clear(); S.cities.clear();
   S.district = S.zone = S.street = ''; S.priceMin = S.priceMax = null;
   S.median = S.photo = S.retired = false;
   document.getElementById('q').value = '';
@@ -666,6 +680,7 @@ function openCard(id){
   if (!ph.length) html += '<div class="note">Фотографии нет — этой конструкции не было в адресной программе. Добавьте фото через админку.</div>';
   html += ph.map(p => '<img class="shot" src="' + esc(p) + '" alt="" loading="lazy">').join('');
   html += '<table class="kv">' +
+    row('Город', esc((CITY.get(c.city) || {}).name || c.city)) +
     row('Подрядчик', '<b>' + esc(c._con.name) + '</b>') +
     row('Формат', esc(c._fmt.name)) +
     row('Код', c.code ? '<code>' + esc(c.code) + '</code>' : '') +
