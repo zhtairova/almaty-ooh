@@ -220,7 +220,6 @@ table.kv td:first-child{color:var(--dim);width:44%}
       <div class="row"><input type="radio" name="base" id="bSat"><label for="bSat">Спутник</label></div>
       <hr>
       <h4>Слои</h4>
-      <div class="row"><input type="checkbox" id="lGenplanAstana"><label for="lGenplanAstana">Генплан Астаны 2026</label></div>
       <div class="row"><input type="checkbox" id="lMag" checked><label for="lMag">Главные магистрали</label></div>
       <div class="row"><input type="checkbox" id="lDist"><label for="lDist">Границы районов</label></div>
       <div class="row"><input type="checkbox" id="lZone"><label for="lZone">Зоны</label></div>
@@ -262,6 +261,7 @@ table.kv td:first-child{color:var(--dim);width:44%}
 <script src="vendor/pptxgen.bundle.js"></script>
 <script src="data/data.js"></script>
 <script src="geo/magistrals.js" onerror="window.GEO_MAGISTRALS=null"></script>
+<script src="geo/magistrals-astana.js" onerror="window.GEO_MAGISTRALS_ASTANA=null"></script>
 <script src="geo/districts.js" onerror="window.GEO_DISTRICTS=null"></script>
 
 <script>
@@ -280,7 +280,8 @@ if (!window.PORTAL_DATA)
   die('Не найден файл <code>data/data.js</code>.<br><br>Соберите базу:<br><code>powershell -ExecutionPolicy Bypass -File build.ps1</code>');
 
 const D = window.PORTAL_DATA;
-const MAG = window.GEO_MAGISTRALS || null;
+const MAG_BY_CITY = { almaty: window.GEO_MAGISTRALS || null, astana: window.GEO_MAGISTRALS_ASTANA || null };
+const MAG = MAG_BY_CITY.almaty;   // по умолчанию — Алматы, см. rebuildMagLayer()
 const DIS = window.GEO_DISTRICTS || null;
 
 document.getElementById('gen').textContent = '· обновлено ' + (D.generated || '—');
@@ -415,7 +416,7 @@ function buildFilters(){
   chips(document.getElementById('fCity'),
         (D.cities || []).map(x => ({ id:x.id, name:x.name, n:ci.get(x.id)||0 })),
         S.cities, false,
-        (it, isOn) => { if (isOn) flyToCity(it.id); });
+        (it, isOn) => { if (isOn) { flyToCity(it.id); rebuildMagLayer(it.id); } });
   // Подрядчик — обычный выпадающий список (как Район/Зона/Улица), не сужается
   // выбранным городом: остальные такие списки в этой панели тоже не сужают
   // друг друга, остаёмся последовательны с этим поведением.
@@ -495,60 +496,47 @@ function flyToCity(cityId){
     map.invalidateSize();
     map.setView([ct.lat, ct.lon], ct.zoom || 12);
   }, 80);
-  // Генплан Астаны актуален только там — включаем при переходе на Астану,
-  // выключаем при переходе на любой другой город, чтобы он не оставался
-  // висеть поверх чужой карты.
-  const gpBox = document.getElementById('lGenplanAstana');
-  const wantGenplan = cityId === 'astana';
-  if (gpBox.checked !== wantGenplan) { gpBox.checked = wantGenplan; gpBox.onchange({ target: gpBox }); }
 }
 const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   { maxZoom: 19, crossOrigin: 'anonymous', attribution: '&copy; OpenStreetMap' }).addTo(map);
 const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
   { maxZoom: 19, crossOrigin: 'anonymous', attribution: 'Esri, Maxar, Earthstar Geographics' });
 
-/* Генплан Астаны 2026 — источник gis.esaulet.kz, служба "MapServer/export" не
-   кэширована (singleFusedMapCache:false), обычного /tile/{z}/{x}/{y} у неё нет —
-   считаем bbox тайла в Web Mercator сами и запрашиваем export как картинку
-   256×256 с bboxSR/imageSR=102100 (сервис поддерживает репроекцию из своей
-   локальной СК на лету — так же делает и их собственный веб-портал). */
-const WM_R = 20037508.342789244;
-function tileBounds3857(z, x, y){
-  const n = Math.pow(2, z), s = 2 * WM_R / n;
-  return [x * s - WM_R, WM_R - (y + 1) * s, (x + 1) * s - WM_R, WM_R - y * s];
-}
-const AstanaGenplanLayer = L.TileLayer.extend({
-  getTileUrl: function(coords){
-    const b = tileBounds3857(coords.z, coords.x, coords.y);
-    return 'https://gis.esaulet.kz/server/rest/services/' +
-      encodeURIComponent('Генеральный_план_jpeg_откр_конт') + '/MapServer/export?' +
-      'bbox=' + b.join(',') + '&bboxSR=102100&imageSR=102100&size=256,256' +
-      '&format=png32&transparent=true&f=image&layers=show:0';
-  }
-});
-const astanaGenplan = new AstanaGenplanLayer('', {
-  minZoom: 10, maxZoom: 18, opacity: 0.85, crossOrigin: 'anonymous',
-  attribution: 'Генплан — gis.esaulet.kz'
-});
-
 const magLayer  = L.layerGroup();
 const distLayer = L.layerGroup();
 const zoneLayer = L.layerGroup();
 let overlayOpacity = 0.7;
 
-if (MAG && MAG.features){
-  for (const f of MAG.features){
-    const ll = f.geometry.coordinates.map(line => line.map(p => [p[1], p[0]]));
-    L.polyline(ll, { color:'#e8590c', weight:5, opacity:overlayOpacity, lineCap:'round' })
-      .bindTooltip(f.properties.name, { sticky:true }).addTo(magLayer);
+/* Магистрали — свой набор линий на город (geo/magistrals[-город].js). При смене
+   города в фильтре (см. onToggle у чипов «Город») перерисовываем тем же слоем,
+   не трогая чекбокс — если он был включён, останется включён, просто с новыми
+   линиями. Алматинский набор — по умолчанию, пока явно не выбрана Астана. */
+let curMagCity = 'almaty';
+function rebuildMagLayer(cityId){
+  const wasOn = map.hasLayer(magLayer);
+  magLayer.clearLayers();
+  curMagCity = cityId;
+  const mag = MAG_BY_CITY[cityId] || null;
+  if (mag && mag.features){
+    for (const f of mag.features){
+      const ll = f.geometry.coordinates.map(line => line.map(p => [p[1], p[0]]));
+      L.polyline(ll, { color:'#e8590c', weight:5, opacity:overlayOpacity, lineCap:'round' })
+        .bindTooltip(f.properties.name, { sticky:true }).addTo(magLayer);
+    }
   }
-  magLayer.addTo(map);
-} else {
-  document.getElementById('lMag').disabled = true;
-  document.getElementById('lMag').checked = false;
-  document.getElementById('lMag').parentNode.style.opacity = .45;
-  document.getElementById('lMag').nextElementSibling.title = 'нет geo/magistrals.js — запустите fetch-geo.ps1';
+  const box = document.getElementById('lMag');
+  if (mag && mag.features){
+    box.disabled = false; box.parentNode.style.opacity = '';
+    box.nextElementSibling.title = '';
+    if (wasOn) magLayer.addTo(map);
+  } else {
+    box.disabled = true; box.checked = false; map.removeLayer(magLayer);
+    box.parentNode.style.opacity = .45;
+    box.nextElementSibling.title = 'нет geo/magistrals' + (cityId === 'almaty' ? '' : '-' + cityId) + '.js — запустите fetch-geo.ps1';
+  }
 }
+rebuildMagLayer('almaty');
+magLayer.addTo(map);
 if (DIS && DIS.features){
   L.geoJSON(DIS, { style:{ color:'#5b21b6', weight:1.6, fill:true, fillOpacity:.05, opacity:overlayOpacity } })
     .bindTooltip(l => l.feature.properties.name).addTo(distLayer);
@@ -630,7 +618,6 @@ document.getElementById('bSat').onchange = () => { map.removeLayer(osm); sat.add
 const tog = (id, layer) => document.getElementById(id).onchange = e =>
   e.target.checked ? layer.addTo(map) : map.removeLayer(layer);
 tog('lMag', magLayer); tog('lDist', distLayer); tog('lZone', zoneLayer);
-tog('lGenplanAstana', astanaGenplan);
 document.getElementById('op').oninput = e => {
   overlayOpacity = e.target.value / 100;
   [magLayer, distLayer, zoneLayer].forEach(g => g.eachLayer(l => {
