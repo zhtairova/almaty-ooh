@@ -220,6 +220,7 @@ table.kv td:first-child{color:var(--dim);width:44%}
       <div class="row"><input type="radio" name="base" id="bSat"><label for="bSat">Спутник</label></div>
       <hr>
       <h4>Слои</h4>
+      <div class="row"><input type="checkbox" id="lGenplanAstana"><label for="lGenplanAstana">Генплан Астаны 2026</label></div>
       <div class="row"><input type="checkbox" id="lMag" checked><label for="lMag">Главные магистрали</label></div>
       <div class="row"><input type="checkbox" id="lDist"><label for="lDist">Границы районов</label></div>
       <div class="row"><input type="checkbox" id="lZone"><label for="lZone">Зоны</label></div>
@@ -376,14 +377,20 @@ function effectivePrice(c){
   return d ? Math.round(c.price * (1 - d / 100)) : c.price;
 }
 
-function chips(host, items, set, colored){
+function chips(host, items, set, colored, onToggle){
   host.innerHTML = '';
   for (const it of items){
     const b = document.createElement('div');
     b.className = 'chip';
     b.innerHTML = (colored ? '<span class="sw" style="background:' + it.color + '"></span>' : '') +
                   it.name + ' <span style="opacity:.65">' + it.n + '</span>';
-    b.onclick = () => { set.has(it.id) ? set.delete(it.id) : set.add(it.id); b.classList.toggle('on'); apply(); };
+    b.onclick = () => {
+      const willBeOn = !set.has(it.id);
+      willBeOn ? set.add(it.id) : set.delete(it.id);
+      b.classList.toggle('on');
+      if (onToggle) onToggle(it, willBeOn);
+      apply();
+    };
     host.appendChild(b);
   }
 }
@@ -407,7 +414,8 @@ function buildFilters(){
   // где пустые варианты скрыты, тут это самоцель фильтра.
   chips(document.getElementById('fCity'),
         (D.cities || []).map(x => ({ id:x.id, name:x.name, n:ci.get(x.id)||0 })),
-        S.cities, false);
+        S.cities, false,
+        (it, isOn) => { if (isOn) flyToCity(it.id); });
   // Подрядчик — обычный выпадающий список (как Район/Зона/Улица), не сужается
   // выбранным городом: остальные такие списки в этой панели тоже не сужают
   // друг друга, остаёмся последовательны с этим поведением.
@@ -468,10 +476,60 @@ let shown = [];
    4. Карта
    ====================================================================== */
 const map = L.map('map', { center: [D.city.lat, D.city.lon], zoom: D.city.zoom, zoomControl: true, preferCanvas: true });
+function flyToCity(cityId){
+  const ct = CITY.get(cityId);
+  if (!ct || ct.lat == null || ct.lon == null) return;
+  // На узком экране карта скрыта (display:none), пока не выбран режим «На
+  // карте» — flyTo на контейнере нулевого размера бросает исключение внутри
+  // Leaflet (Invalid LatLng NaN,NaN). Сначала переключаемся, ждём кадр отрисовки
+  // (иначе clientWidth/Height ещё 0), пересчитываем размер и только потом летим.
+  if (document.getElementById('main').classList.contains('m-list')) {
+    document.getElementById('vMap').click();
+  }
+  // setTimeout, а не requestAnimationFrame: переключение вида (клик по vMap)
+  // само может запускать invalidateSize/fitToData через ResizeObserver — если
+  // звать flyTo в кадре следом, эти события иногда обрывают анимацию на
+  // середине (карта замирает не долетев). Обычный setView надёжнее и не
+  // зависит от того, что ещё реагирует на смену размера контейнера.
+  setTimeout(() => {
+    map.invalidateSize();
+    map.setView([ct.lat, ct.lon], ct.zoom || 12);
+  }, 80);
+  // Генплан Астаны актуален только там — включаем при переходе на Астану,
+  // выключаем при переходе на любой другой город, чтобы он не оставался
+  // висеть поверх чужой карты.
+  const gpBox = document.getElementById('lGenplanAstana');
+  const wantGenplan = cityId === 'astana';
+  if (gpBox.checked !== wantGenplan) { gpBox.checked = wantGenplan; gpBox.onchange({ target: gpBox }); }
+}
 const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   { maxZoom: 19, crossOrigin: 'anonymous', attribution: '&copy; OpenStreetMap' }).addTo(map);
 const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
   { maxZoom: 19, crossOrigin: 'anonymous', attribution: 'Esri, Maxar, Earthstar Geographics' });
+
+/* Генплан Астаны 2026 — источник gis.esaulet.kz, служба "MapServer/export" не
+   кэширована (singleFusedMapCache:false), обычного /tile/{z}/{x}/{y} у неё нет —
+   считаем bbox тайла в Web Mercator сами и запрашиваем export как картинку
+   256×256 с bboxSR/imageSR=102100 (сервис поддерживает репроекцию из своей
+   локальной СК на лету — так же делает и их собственный веб-портал). */
+const WM_R = 20037508.342789244;
+function tileBounds3857(z, x, y){
+  const n = Math.pow(2, z), s = 2 * WM_R / n;
+  return [x * s - WM_R, WM_R - (y + 1) * s, (x + 1) * s - WM_R, WM_R - y * s];
+}
+const AstanaGenplanLayer = L.TileLayer.extend({
+  getTileUrl: function(coords){
+    const b = tileBounds3857(coords.z, coords.x, coords.y);
+    return 'https://gis.esaulet.kz/server/rest/services/' +
+      encodeURIComponent('Генеральный_план_jpeg_откр_конт') + '/MapServer/export?' +
+      'bbox=' + b.join(',') + '&bboxSR=102100&imageSR=102100&size=256,256' +
+      '&format=png32&transparent=true&f=image&layers=show:0';
+  }
+});
+const astanaGenplan = new AstanaGenplanLayer('', {
+  minZoom: 10, maxZoom: 18, opacity: 0.85, crossOrigin: 'anonymous',
+  attribution: 'Генплан — gis.esaulet.kz'
+});
 
 const magLayer  = L.layerGroup();
 const distLayer = L.layerGroup();
@@ -572,6 +630,7 @@ document.getElementById('bSat').onchange = () => { map.removeLayer(osm); sat.add
 const tog = (id, layer) => document.getElementById(id).onchange = e =>
   e.target.checked ? layer.addTo(map) : map.removeLayer(layer);
 tog('lMag', magLayer); tog('lDist', distLayer); tog('lZone', zoneLayer);
+tog('lGenplanAstana', astanaGenplan);
 document.getElementById('op').oninput = e => {
   overlayOpacity = e.target.value / 100;
   [magLayer, distLayer, zoneLayer].forEach(g => g.eachLayer(l => {
