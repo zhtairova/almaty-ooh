@@ -262,6 +262,7 @@ table.kv td:first-child{color:var(--dim);width:44%}
 <script src="data/data.js"></script>
 <script src="geo/magistrals.js" onerror="window.GEO_MAGISTRALS=null"></script>
 <script src="geo/magistrals-astana.js" onerror="window.GEO_MAGISTRALS_ASTANA=null"></script>
+<script src="geo/magistrals-shymkent.js" onerror="window.GEO_MAGISTRALS_SHYMKENT=null"></script>
 <script src="geo/districts.js" onerror="window.GEO_DISTRICTS=null"></script>
 
 <script>
@@ -280,7 +281,7 @@ if (!window.PORTAL_DATA)
   die('Не найден файл <code>data/data.js</code>.<br><br>Соберите базу:<br><code>powershell -ExecutionPolicy Bypass -File build.ps1</code>');
 
 const D = window.PORTAL_DATA;
-const MAG_BY_CITY = { almaty: window.GEO_MAGISTRALS || null, astana: window.GEO_MAGISTRALS_ASTANA || null };
+const MAG_BY_CITY = { almaty: window.GEO_MAGISTRALS || null, astana: window.GEO_MAGISTRALS_ASTANA || null, shymkent: window.GEO_MAGISTRALS_SHYMKENT || null };
 const MAG = MAG_BY_CITY.almaty;   // по умолчанию — Алматы, см. rebuildMagLayer()
 const DIS = window.GEO_DISTRICTS || null;
 
