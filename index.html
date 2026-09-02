@@ -384,7 +384,7 @@ function chips(host, items, set, colored, onToggle){
   host.innerHTML = '';
   for (const it of items){
     const b = document.createElement('div');
-    b.className = 'chip';
+    b.className = 'chip' + (set.has(it.id) ? ' on' : '');
     b.innerHTML = (colored ? '<span class="sw" style="background:' + it.color + '"></span>' : '') +
                   it.name + ' <span style="opacity:.65">' + it.n + '</span>';
     b.onclick = () => {
@@ -405,10 +405,24 @@ function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, m =>
   ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
 
 function buildFilters(){
+  const cityScope = S.cities.size ? S.cities : null;
   const cnt = (fn) => {
     const m = new Map();
     for (const c of D.constructions){ if (c.hidden && !S.retired) continue; const k = fn(c);
       if (Array.isArray(k)) k.forEach(x => x && m.set(x, (m.get(x)||0)+1)); else if (k) m.set(k, (m.get(k)||0)+1); }
+    return m;
+  };
+  // Тот же счётчик, но только по конструкциям выбранного(ых) города(ов) — им
+  // считаем Район/Зону/Улицу: эти три сужаются городом, а Формат/Поставщик/
+  // сам Город — нет (см. комментарий у Города ниже).
+  const cntCity = (fn) => {
+    const m = new Map();
+    for (const c of D.constructions){
+      if (c.hidden && !S.retired) continue;
+      if (cityScope && !cityScope.has(c.city)) continue;
+      const k = fn(c);
+      if (Array.isArray(k)) k.forEach(x => x && m.set(x, (m.get(x)||0)+1)); else if (k) m.set(k, (m.get(k)||0)+1);
+    }
     return m;
   };
   const cc = cnt(c => c.contractor), cf = cnt(c => c.format), ci = cnt(c => c.city);
@@ -418,7 +432,7 @@ function buildFilters(){
   chips(document.getElementById('fCity'),
         (D.cities || []).map(x => ({ id:x.id, name:x.name, n:ci.get(x.id)||0 })),
         S.cities, false,
-        (it, isOn) => { if (isOn) { flyToCity(it.id); rebuildMagLayer(it.id); } });
+        (it, isOn) => { if (isOn) { flyToCity(it.id); rebuildMagLayer(it.id); } buildFilters(); });
   chips(document.getElementById('fSupplier'),
         D.contractors.filter(x => cc.get(x.id)).map(x => ({ id:x.id, name:x.name, color:x.color, n:cc.get(x.id)||0 })),
         S.contractors, true);
@@ -431,18 +445,35 @@ function buildFilters(){
   }
   chips(document.getElementById('fFormat'), [...fmtGroups.values()], S.formats, false);
 
-  const dm = cnt(districtOf), zm = cnt(zoneOf), sm = cnt(c => c.streets || []);
+  const dm = cntCity(districtOf), zm = cntCity(zoneOf), sm = cntCity(c => c.streets || []);
   fill(document.getElementById('fDistrict'),
        [...dm.keys()].sort((a,b)=>a.localeCompare(b,'ru')).map(k=>({v:k,t:k+' ('+dm.get(k)+')'})),
        dm.size ? 'Все районы' : 'нет данных — запустите fetch-geo.ps1');
   fill(document.getElementById('fZone'),
        [...zm.keys()].sort((a,b)=>a.localeCompare(b,'ru')).map(k=>({v:k,t:k+' ('+zm.get(k)+')'})),
        zm.size ? 'Все зоны' : 'зоны не заданы — нарисуйте в админке');
-  // улицы: сначала главные магистрали, потом остальные по частоте
-  const majors = new Set((D.streets||[]).filter(s=>s.major).map(s=>s.name));
+  // улицы: сначала главные магистрали, потом остальные по частоте. Звёздами
+  // отмечаем магистрали ИМЕННО выбранного города (или всех выбранных сразу) —
+  // те же названия, что и в слое «Главные магистрали» на карте
+  // (geo/magistrals[-город].js), а не общий список для всей базы.
+  // Без выбранного города по умолчанию считаем магистрали Алматы (сейчас
+  // единственный город с реальными данными) — иначе одноимённые улицы других
+  // городов (например, «Байтурсынова» в Шымкенте) ошибочно звездились бы и в Алматы.
+  const activeCityIds = cityScope ? [...cityScope] : ['almaty'];
+  const majors = new Set();
+  for (const cid of activeCityIds){
+    const mag = MAG_BY_CITY[cid];
+    if (mag && mag.features) mag.features.forEach(f => majors.add(f.properties.name));
+  }
   const sl = [...sm.keys()].sort((a,b) => (majors.has(b)?1:0)-(majors.has(a)?1:0) || sm.get(b)-sm.get(a) || a.localeCompare(b,'ru'));
   fill(document.getElementById('fStreet'),
        sl.map(k => ({ v:k, t:(majors.has(k)?'★ ':'') + k + ' (' + sm.get(k) + ')' })), 'Все улицы');
+  // Если после смены города текущее значение Района/Зоны/Улицы перестало
+  // существовать в новом (суженном) списке — сбрасываем его, а не оставляем
+  // невидимый фильтр, из-за которого результат молча станет пустым.
+  if (S.district && !dm.has(S.district)) S.district = '';
+  if (S.zone && !zm.has(S.zone)) S.zone = '';
+  if (S.street && !sm.has(S.street)) S.street = '';
   document.getElementById('fDistrict').value = S.district;
   document.getElementById('fZone').value = S.zone;
   document.getElementById('fStreet').value = S.street;
