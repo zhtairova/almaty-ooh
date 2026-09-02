@@ -193,11 +193,11 @@ table.kv td:first-child{color:var(--dim);width:44%}
 
 <div id="filters">
   <div class="fgroup"><label>Город</label><div class="chips" id="fCity"></div></div>
+  <div class="fgroup"><label>Поставщик</label><div class="chips" id="fSupplier"></div></div>
   <div class="fgroup"><label>Формат</label><div class="chips" id="fFormat"></div></div>
   <div class="fgroup"><label>Район</label><select id="fDistrict"></select></div>
   <div class="fgroup"><label>Зона</label><select id="fZone"></select></div>
   <div class="fgroup"><label>Улица</label><select id="fStreet"></select></div>
-  <div class="fgroup"><label>Подрядчик</label><select id="fContractor"></select></div>
   <div class="fgroup"><label>Цена, тг</label>
     <input id="fPriceMin" type="number" placeholder="от" style="width:92px" min="0" step="10000">
     <input id="fPriceMax" type="number" placeholder="до" style="width:92px" min="0" step="10000">
@@ -366,7 +366,7 @@ computeZones();
    3. Фильтры
    ====================================================================== */
 const S = {
-  q: '', contractor: '', formats: new Set(), cities: new Set(),
+  q: '', contractors: new Set(), formats: new Set(), cities: new Set(),
   district: '', zone: '', street: '',
   priceMin: null, priceMax: null,
   median: false, photo: false, retired: false,
@@ -419,13 +419,9 @@ function buildFilters(){
         (D.cities || []).map(x => ({ id:x.id, name:x.name, n:ci.get(x.id)||0 })),
         S.cities, false,
         (it, isOn) => { if (isOn) { flyToCity(it.id); rebuildMagLayer(it.id); } });
-  // Подрядчик — обычный выпадающий список (как Район/Зона/Улица), не сужается
-  // выбранным городом: остальные такие списки в этой панели тоже не сужают
-  // друг друга, остаёмся последовательны с этим поведением.
-  fill(document.getElementById('fContractor'),
-       D.contractors.filter(x => cc.get(x.id)).map(x => ({ v:x.id, t:x.name+' ('+cc.get(x.id)+')' })),
-       'Все подрядчики');
-  document.getElementById('fContractor').value = S.contractor;
+  chips(document.getElementById('fSupplier'),
+        D.contractors.filter(x => cc.get(x.id)).map(x => ({ id:x.id, name:x.name, color:x.color, n:cc.get(x.id)||0 })),
+        S.contractors, true);
   const fmtGroups = new Map();   // groupKey -> { id, name, n }
   for (const f of D.formats){
     const n = cf.get(f.id) || 0; if (!n) continue;
@@ -454,7 +450,7 @@ function buildFilters(){
 
 function pass(c){
   if (c.hidden && !S.retired) return false;
-  if (S.contractor && c.contractor !== S.contractor) return false;
+  if (S.contractors.size && !S.contractors.has(c.contractor)) return false;
   if (S.cities.size && !S.cities.has(c.city)) return false;
   if (S.formats.size && !S.formats.has(formatGroupKey(c.format))) return false;
   if (S.district && districtOf(c) !== S.district) return false;
@@ -687,7 +683,6 @@ function apply(){
   renderList(); drawMarkers();
 }
 document.getElementById('q').oninput = e => { S.q = e.target.value.trim(); apply(); };
-document.getElementById('fContractor').onchange = e => { S.contractor = e.target.value; apply(); };
 document.getElementById('fDistrict').onchange = e => { S.district = e.target.value; apply(); };
 document.getElementById('fZone').onchange     = e => { S.zone = e.target.value; apply(); };
 document.getElementById('fStreet').onchange   = e => { S.street = e.target.value; apply(); };
@@ -697,7 +692,7 @@ document.getElementById('fMedian').onchange   = e => { S.median = e.target.check
 document.getElementById('fPhoto').onchange    = e => { S.photo = e.target.checked; apply(); };
 document.getElementById('fRetired').onchange  = e => { S.retired = e.target.checked; buildFilters(); apply(); };
 document.getElementById('clear').onclick = () => {
-  S.q = ''; S.contractor = ''; S.formats.clear(); S.cities.clear();
+  S.q = ''; S.contractors.clear(); S.formats.clear(); S.cities.clear();
   S.district = S.zone = S.street = ''; S.priceMin = S.priceMax = null;
   S.median = S.photo = S.retired = false;
   document.getElementById('q').value = '';
