@@ -341,6 +341,14 @@ function computeZones(){
 }
 const zoneOf     = c => c.zone || c._zoneAuto || null;
 const districtOf = c => c.districtOverride || c.district || null;
+// Ключ фильтра "Улица" — "<id города> <название улицы>". Название улицы само
+// нередко содержит пробелы ("Тауке хана", "Толе би") — режем только по ПЕРВОМУ
+// пробелу (id города — всегда одно слово-слаг), а не split(' '), иначе
+// многословные улицы обрежутся до первого слова.
+function splitStreetKey(k){
+  const sp = k.indexOf(' ');
+  return sp < 0 ? [k, ''] : [k.slice(0, sp), k.slice(sp + 1)];
+}
 
 /* ======================================================================
    2. Подготовка записей
@@ -445,35 +453,64 @@ function buildFilters(){
   }
   chips(document.getElementById('fFormat'), [...fmtGroups.values()], S.formats, false);
 
-  const dm = cntCity(districtOf), zm = cntCity(zoneOf), sm = cntCity(c => c.streets || []);
+  const dm = cntCity(districtOf), zm = cntCity(zoneOf);
   fill(document.getElementById('fDistrict'),
        [...dm.keys()].sort((a,b)=>a.localeCompare(b,'ru')).map(k=>({v:k,t:k+' ('+dm.get(k)+')'})),
        dm.size ? 'Все районы' : 'нет данных — запустите fetch-geo.ps1');
   fill(document.getElementById('fZone'),
        [...zm.keys()].sort((a,b)=>a.localeCompare(b,'ru')).map(k=>({v:k,t:k+' ('+zm.get(k)+')'})),
        zm.size ? 'Все зоны' : 'зоны не заданы — нарисуйте в админке');
-  // улицы: сначала главные магистрали, потом остальные по частоте. Звёздами
-  // отмечаем магистрали ИМЕННО выбранного города (или всех выбранных сразу) —
-  // те же названия, что и в слое «Главные магистрали» на карте
+  // улицы: считаем ПО ГОРОДУ, а не только по имени — разные города нередко делят
+  // одинаковые названия улиц («Достык» есть и в Алматы, и в Астане, «Абая» — в
+  // Алматы и Астане, и т.д.). Раньше S.street хранил голое имя улицы, и без
+  // выбранного города (или при нескольких выбранных сразу) выбор такой улицы
+  // показывал конструкции из ОБОИХ городов вперемешку. Теперь значение в селекте —
+  // составной ключ "город улица", уникальный сам по себе; человекочитаемое
+  // имя города добавляется в подпись, только если это конкретное имя улицы
+  // действительно неоднозначно в текущей выборке.
+  const STREET_SEP = ' ';
+  const streetCityCount = new Map();   // "city street" -> count
+  const streetCities     = new Map();  // street -> Set(city) — для определения неоднозначности
+  for (const c of D.constructions){
+    if (c.hidden && !S.retired) continue;
+    if (cityScope && !cityScope.has(c.city)) continue;
+    for (const s of (c.streets || [])){
+      const key = c.city + STREET_SEP + s;
+      streetCityCount.set(key, (streetCityCount.get(key)||0)+1);
+      if (!streetCities.has(s)) streetCities.set(s, new Set());
+      streetCities.get(s).add(c.city);
+    }
+  }
+  // сначала главные магистрали, потом остальные по частоте. Звёздами отмечаем
+  // магистрали ИМЕННО выбранного города (или всех выбранных сразу) — те же
+  // названия, что и в слое «Главные магистрали» на карте
   // (geo/magistrals[-город].js), а не общий список для всей базы.
   // Без выбранного города по умолчанию считаем магистрали Алматы (сейчас
-  // единственный город с реальными данными) — иначе одноимённые улицы других
-  // городов (например, «Байтурсынова» в Шымкенте) ошибочно звездились бы и в Алматы.
+  // основной город с данными) — иначе одноимённые улицы других городов
+  // (например, «Байтурсынова» в Шымкенте) ошибочно звездились бы и в Алматы.
   const activeCityIds = cityScope ? [...cityScope] : ['almaty'];
   const majors = new Set();
   for (const cid of activeCityIds){
     const mag = MAG_BY_CITY[cid];
     if (mag && mag.features) mag.features.forEach(f => majors.add(f.properties.name));
   }
-  const sl = [...sm.keys()].sort((a,b) => (majors.has(b)?1:0)-(majors.has(a)?1:0) || sm.get(b)-sm.get(a) || a.localeCompare(b,'ru'));
+  const sl = [...streetCityCount.keys()].sort((a,b) => {
+    const [,sa] = splitStreetKey(a), [,sb] = splitStreetKey(b);
+    return (majors.has(sb)?1:0)-(majors.has(sa)?1:0) || streetCityCount.get(b)-streetCityCount.get(a) || sa.localeCompare(sb,'ru');
+  });
   fill(document.getElementById('fStreet'),
-       sl.map(k => ({ v:k, t:(majors.has(k)?'★ ':'') + k + ' (' + sm.get(k) + ')' })), 'Все улицы');
+       sl.map(k => {
+         const [city, s] = splitStreetKey(k);
+         const ambiguous = streetCities.get(s).size > 1;
+         const label = (majors.has(s) ? '★ ' : '') + s + (ambiguous ? ' (' + (CITY.get(city)?.name || city) + ')' : '') + ' (' + streetCityCount.get(k) + ')';
+         return { v:k, t:label };
+       }), 'Все улицы');
   // Если после смены города текущее значение Района/Зоны/Улицы перестало
   // существовать в новом (суженном) списке — сбрасываем его, а не оставляем
   // невидимый фильтр, из-за которого результат молча станет пустым.
   if (S.district && !dm.has(S.district)) S.district = '';
   if (S.zone && !zm.has(S.zone)) S.zone = '';
-  if (S.street && !sm.has(S.street)) S.street = '';
+  if (S.street && !streetCityCount.has(S.street)) S.street = '';
   document.getElementById('fDistrict').value = S.district;
   document.getElementById('fZone').value = S.zone;
   document.getElementById('fStreet').value = S.street;
@@ -486,7 +523,12 @@ function pass(c){
   if (S.formats.size && !S.formats.has(formatGroupKey(c.format))) return false;
   if (S.district && districtOf(c) !== S.district) return false;
   if (S.zone && zoneOf(c) !== S.zone) return false;
-  if (S.street && !(c.streets || []).includes(S.street)) return false;
+  // S.street хранит составной ключ "город улица" (см. buildFilters) — сверяем
+  // и город, и саму улицу, иначе одноимённая улица другого города тоже проходила бы.
+  if (S.street) {
+    const [selCity, selStreet] = splitStreetKey(S.street);
+    if (c.city !== selCity || !(c.streets || []).includes(selStreet)) return false;
+  }
   if (S.priceMin != null || S.priceMax != null){
     if (c.price == null) return false;   // без цены — нельзя подтвердить попадание в диапазон
     if (S.priceMin != null && c.price < S.priceMin) return false;
