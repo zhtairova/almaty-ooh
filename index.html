@@ -193,7 +193,7 @@ table.kv td:first-child{color:var(--dim);width:44%}
 
 <div id="filters">
   <div class="fgroup"><label>Город</label><div class="chips" id="fCity"></div></div>
-  <div class="fgroup"><label>Поставщик</label><div class="chips" id="fSupplier"></div></div>
+  <div class="fgroup" id="fgSupplier" hidden><label>Поставщик</label><div class="chips" id="fSupplier"></div></div>
   <div class="fgroup"><label>Формат</label><div class="chips" id="fFormat"></div></div>
   <div class="fgroup"><label>Район</label><select id="fDistrict"></select></div>
   <div class="fgroup"><label>Зона</label><select id="fZone"></select></div>
@@ -425,7 +425,7 @@ function buildFilters(){
     return m;
   };
   // Тот же счётчик, но только по конструкциям выбранного(ых) города(ов) — им
-  // считаем Район/Зону/Улицу: эти три сужаются городом, а Формат/Поставщик/
+  // считаем Район/Зону/Улицу/Поставщика: эти четыре сужаются городом, а Формат/
   // сам Город — нет (см. комментарий у Города ниже).
   const cntCity = (fn) => {
     const m = new Map();
@@ -437,7 +437,7 @@ function buildFilters(){
     }
     return m;
   };
-  const cc = cnt(c => c.contractor), cf = cnt(c => c.format), ci = cnt(c => c.city);
+  const cc = cntCity(c => c.contractor), cf = cnt(c => c.format), ci = cnt(c => c.city);
   // Город показывает ВСЕ известные города, даже с нулём точек (Астана и т.п.
   // заведены заранее, под них ещё нет данных) — в отличие от Формата/Подрядчика,
   // где пустые варианты скрыты, тут это самоцель фильтра.
@@ -445,9 +445,21 @@ function buildFilters(){
         (D.cities || []).map(x => ({ id:x.id, name:x.name, n:ci.get(x.id)||0 })),
         S.cities, false,
         (it, isOn) => { if (isOn) { flyToCity(it.id); rebuildMagLayer(it.id); rebuildDistLayer(it.id); } buildFilters(); });
-  chips(document.getElementById('fSupplier'),
-        D.contractors.filter(x => cc.get(x.id)).map(x => ({ id:x.id, name:x.name, color:x.color, n:cc.get(x.id)||0 })),
-        S.contractors, true);
+  // Поставщик появляется только после выбора города и показывает только тех,
+  // кто реально есть в этом городе (счётчик — cntCity, т.е. в рамках выбранного
+  // города, а не по всей базе) — один и тот же подрядчик (Citix/Ecogen/Aqyldy Qala/
+  // Success Market) в разных городах виден отдельно, без смешения точек других
+  // городов в счётчике и в результатах.
+  const fgSupplier = document.getElementById('fgSupplier');
+  if (cityScope) {
+    fgSupplier.hidden = false;
+    chips(document.getElementById('fSupplier'),
+          D.contractors.filter(x => cc.get(x.id)).map(x => ({ id:x.id, name:x.name, color:x.color, n:cc.get(x.id)||0 })),
+          S.contractors, true);
+  } else {
+    fgSupplier.hidden = true;
+    if (S.contractors.size) { S.contractors.clear(); }
+  }
   const fmtGroups = new Map();   // groupKey -> { id, name, n }
   for (const f of D.formats){
     const n = cf.get(f.id) || 0; if (!n) continue;
