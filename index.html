@@ -204,7 +204,6 @@ table.kv td:first-child{color:var(--dim);width:44%}
   </div>
   <label class="chk"><input type="checkbox" id="fMedian"> на разделительной</label>
   <label class="chk"><input type="checkbox" id="fPhoto"> только с фото</label>
-  <label class="chk"><input type="checkbox" id="fRetired"> показывать снятые</label>
   <button class="btn" id="clear">Очистить всё</button>
   <div id="count"></div>
 </div>
@@ -265,6 +264,8 @@ table.kv td:first-child{color:var(--dim);width:44%}
 <script src="geo/magistrals-shymkent.js" onerror="window.GEO_MAGISTRALS_SHYMKENT=null"></script>
 <script src="geo/magistrals-karaganda.js" onerror="window.GEO_MAGISTRALS_KARAGANDA=null"></script>
 <script src="geo/districts.js" onerror="window.GEO_DISTRICTS=null"></script>
+<script src="geo/districts-astana.js" onerror="window.GEO_DISTRICTS_ASTANA=null"></script>
+<script src="geo/districts-shymkent.js" onerror="window.GEO_DISTRICTS_SHYMKENT=null"></script>
 
 <script>
 'use strict';
@@ -284,7 +285,10 @@ if (!window.PORTAL_DATA)
 const D = window.PORTAL_DATA;
 const MAG_BY_CITY = { almaty: window.GEO_MAGISTRALS || null, astana: window.GEO_MAGISTRALS_ASTANA || null, shymkent: window.GEO_MAGISTRALS_SHYMKENT || null, karaganda: window.GEO_MAGISTRALS_KARAGANDA || null };
 const MAG = MAG_BY_CITY.almaty;   // по умолчанию — Алматы, см. rebuildMagLayer()
-const DIS = window.GEO_DISTRICTS || null;
+// Караганда — не город респ. значения, в OSM у неё нет формальных внутригородских
+// районов (только неофициальные микрорайоны) — geo/districts-karaganda.js не существует,
+// и намеренно не заводился: показывать выдуманные "районы" вместо реальных нельзя.
+const DIS_BY_CITY = { almaty: window.GEO_DISTRICTS || null, astana: window.GEO_DISTRICTS_ASTANA || null, shymkent: window.GEO_DISTRICTS_SHYMKENT || null, karaganda: null };
 
 document.getElementById('gen').textContent = '· обновлено ' + (D.generated || '—');
 
@@ -377,7 +381,7 @@ const S = {
   q: '', contractors: new Set(), formats: new Set(), cities: new Set(),
   district: '', zone: '', street: '',
   priceMin: null, priceMax: null,
-  median: false, photo: false, retired: false,
+  median: false, photo: false,
   cart: new Set(), active: null, limit: 200,
   discounts: {}   // { contractorId: процент } — только для текущей подборки, в data.js не пишется
 };
@@ -416,7 +420,7 @@ function buildFilters(){
   const cityScope = S.cities.size ? S.cities : null;
   const cnt = (fn) => {
     const m = new Map();
-    for (const c of D.constructions){ if (c.hidden && !S.retired) continue; const k = fn(c);
+    for (const c of D.constructions){ if (c.hidden) continue; const k = fn(c);
       if (Array.isArray(k)) k.forEach(x => x && m.set(x, (m.get(x)||0)+1)); else if (k) m.set(k, (m.get(k)||0)+1); }
     return m;
   };
@@ -426,7 +430,7 @@ function buildFilters(){
   const cntCity = (fn) => {
     const m = new Map();
     for (const c of D.constructions){
-      if (c.hidden && !S.retired) continue;
+      if (c.hidden) continue;
       if (cityScope && !cityScope.has(c.city)) continue;
       const k = fn(c);
       if (Array.isArray(k)) k.forEach(x => x && m.set(x, (m.get(x)||0)+1)); else if (k) m.set(k, (m.get(k)||0)+1);
@@ -440,7 +444,7 @@ function buildFilters(){
   chips(document.getElementById('fCity'),
         (D.cities || []).map(x => ({ id:x.id, name:x.name, n:ci.get(x.id)||0 })),
         S.cities, false,
-        (it, isOn) => { if (isOn) { flyToCity(it.id); rebuildMagLayer(it.id); } buildFilters(); });
+        (it, isOn) => { if (isOn) { flyToCity(it.id); rebuildMagLayer(it.id); rebuildDistLayer(it.id); } buildFilters(); });
   chips(document.getElementById('fSupplier'),
         D.contractors.filter(x => cc.get(x.id)).map(x => ({ id:x.id, name:x.name, color:x.color, n:cc.get(x.id)||0 })),
         S.contractors, true);
@@ -454,9 +458,15 @@ function buildFilters(){
   chips(document.getElementById('fFormat'), [...fmtGroups.values()], S.formats, false);
 
   const dm = cntCity(districtOf), zm = cntCity(zoneOf);
+  // Караганда — не город респ. значения, формальных районов у неё в OSM нет вовсе
+  // (см. комментарий у DIS_BY_CITY выше) — это не пробел в данных, чинить нечем.
+  const districtScope = cityScope ? [...cityScope] : [];
+  const noDistrictMsg = (districtScope.length && districtScope.every(cid => cid === 'karaganda'))
+    ? 'в Караганде нет формальных районов в OSM'
+    : 'нет данных — запустите fetch-geo.ps1';
   fill(document.getElementById('fDistrict'),
        [...dm.keys()].sort((a,b)=>a.localeCompare(b,'ru')).map(k=>({v:k,t:k+' ('+dm.get(k)+')'})),
-       dm.size ? 'Все районы' : 'нет данных — запустите fetch-geo.ps1');
+       dm.size ? 'Все районы' : noDistrictMsg);
   fill(document.getElementById('fZone'),
        [...zm.keys()].sort((a,b)=>a.localeCompare(b,'ru')).map(k=>({v:k,t:k+' ('+zm.get(k)+')'})),
        zm.size ? 'Все зоны' : 'зоны не заданы — нарисуйте в админке');
@@ -472,7 +482,7 @@ function buildFilters(){
   const streetCityCount = new Map();   // "city street" -> count
   const streetCities     = new Map();  // street -> Set(city) — для определения неоднозначности
   for (const c of D.constructions){
-    if (c.hidden && !S.retired) continue;
+    if (c.hidden) continue;
     if (cityScope && !cityScope.has(c.city)) continue;
     for (const s of (c.streets || [])){
       const key = c.city + STREET_SEP + s;
@@ -517,7 +527,7 @@ function buildFilters(){
 }
 
 function pass(c){
-  if (c.hidden && !S.retired) return false;
+  if (c.hidden) return false;
   if (S.contractors.size && !S.contractors.has(c.contractor)) return false;
   if (S.cities.size && !S.cities.has(c.city)) return false;
   if (S.formats.size && !S.formats.has(formatGroupKey(c.format))) return false;
@@ -608,14 +618,32 @@ function rebuildMagLayer(cityId){
 }
 rebuildMagLayer('almaty');
 magLayer.addTo(map);
-if (DIS && DIS.features){
-  L.geoJSON(DIS, { style:{ color:'#5b21b6', weight:1.6, fill:true, fillOpacity:.05, opacity:overlayOpacity } })
-    .bindTooltip(l => l.feature.properties.name).addTo(distLayer);
-} else {
-  const el = document.getElementById('lDist');
-  el.disabled = true; el.parentNode.style.opacity = .45;
-  el.nextElementSibling.title = 'нет geo/districts.js — запустите fetch-geo.ps1';
+
+/* Границы районов — свой набор полигонов на город (geo/districts[-город].js),
+   тот же приём переключения по смене города, что и у магистралей. Караганды
+   в DIS_BY_CITY нет вовсе (см. комментарий выше) — чекбокс там всегда выключается. */
+function rebuildDistLayer(cityId){
+  const wasOn = map.hasLayer(distLayer);
+  distLayer.clearLayers();
+  const dis = DIS_BY_CITY[cityId] || null;
+  if (dis && dis.features){
+    L.geoJSON(dis, { style:{ color:'#5b21b6', weight:1.6, fill:true, fillOpacity:.05, opacity:overlayOpacity } })
+      .bindTooltip(l => l.feature.properties.name).addTo(distLayer);
+  }
+  const box = document.getElementById('lDist');
+  if (dis && dis.features){
+    box.disabled = false; box.parentNode.style.opacity = '';
+    box.nextElementSibling.title = '';
+    if (wasOn) distLayer.addTo(map);
+  } else {
+    box.disabled = true; box.checked = false; map.removeLayer(distLayer);
+    box.parentNode.style.opacity = .45;
+    box.nextElementSibling.title = cityId === 'karaganda'
+      ? 'в Караганде нет формальных районов в OSM'
+      : 'нет geo/districts' + (cityId === 'almaty' ? '' : '-' + cityId) + '.js — запустите fetch-geo.ps1';
+  }
 }
+rebuildDistLayer('almaty');
 function drawZones(){
   zoneLayer.clearLayers();
   if (D.zones && D.zones.features && D.zones.features.length){
@@ -763,15 +791,14 @@ document.getElementById('fPriceMin').oninput  = e => { S.priceMin = e.target.val
 document.getElementById('fPriceMax').oninput  = e => { S.priceMax = e.target.value === '' ? null : +e.target.value; apply(); };
 document.getElementById('fMedian').onchange   = e => { S.median = e.target.checked; apply(); };
 document.getElementById('fPhoto').onchange    = e => { S.photo = e.target.checked; apply(); };
-document.getElementById('fRetired').onchange  = e => { S.retired = e.target.checked; buildFilters(); apply(); };
 document.getElementById('clear').onclick = () => {
   S.q = ''; S.contractors.clear(); S.formats.clear(); S.cities.clear();
   S.district = S.zone = S.street = ''; S.priceMin = S.priceMax = null;
-  S.median = S.photo = S.retired = false;
+  S.median = S.photo = false;
   document.getElementById('q').value = '';
   document.getElementById('fPriceMin').value = '';
   document.getElementById('fPriceMax').value = '';
-  ['fMedian','fPhoto','fRetired'].forEach(i => document.getElementById(i).checked = false);
+  ['fMedian','fPhoto'].forEach(i => document.getElementById(i).checked = false);
   buildFilters(); apply();
 };
 
