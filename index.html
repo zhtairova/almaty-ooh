@@ -198,10 +198,6 @@ table.kv td:first-child{color:var(--dim);width:44%}
   <div class="fgroup"><label>Район</label><select id="fDistrict"></select></div>
   <div class="fgroup"><label>Зона</label><select id="fZone"></select></div>
   <div class="fgroup"><label>Улица</label><select id="fStreet"></select></div>
-  <div class="fgroup"><label>Цена, тг</label>
-    <input id="fPriceMin" type="number" placeholder="от" style="width:92px" min="0" step="10000">
-    <input id="fPriceMax" type="number" placeholder="до" style="width:92px" min="0" step="10000">
-  </div>
   <label class="chk"><input type="checkbox" id="fMedian"> на разделительной</label>
   <label class="chk"><input type="checkbox" id="fPhoto"> только с фото</label>
   <button class="btn" id="clear">Очистить всё</button>
@@ -380,7 +376,6 @@ computeZones();
 const S = {
   q: '', contractors: new Set(), formats: new Set(), cities: new Set(),
   district: '', zone: '', street: '',
-  priceMin: null, priceMax: null,
   median: false, photo: false,
   cart: new Set(), active: null, limit: 200,
   discounts: {}   // { contractorId: процент } — только для текущей подборки, в data.js не пишется
@@ -550,11 +545,6 @@ function pass(c){
   if (S.street) {
     const [selCity, selStreet] = splitStreetKey(S.street);
     if (c.city !== selCity || !(c.streets || []).includes(selStreet)) return false;
-  }
-  if (S.priceMin != null || S.priceMax != null){
-    if (c.price == null) return false;   // без цены — нельзя подтвердить попадание в диапазон
-    if (S.priceMin != null && c.price < S.priceMin) return false;
-    if (S.priceMax != null && c.price > S.priceMax) return false;
   }
   if (S.median && !c.median) return false;
   if (S.photo && !(c.photos && c.photos.length)) return false;
@@ -799,17 +789,13 @@ document.getElementById('q').oninput = e => { S.q = e.target.value.trim(); apply
 document.getElementById('fDistrict').onchange = e => { S.district = e.target.value; apply(); };
 document.getElementById('fZone').onchange     = e => { S.zone = e.target.value; apply(); };
 document.getElementById('fStreet').onchange   = e => { S.street = e.target.value; apply(); };
-document.getElementById('fPriceMin').oninput  = e => { S.priceMin = e.target.value === '' ? null : +e.target.value; apply(); };
-document.getElementById('fPriceMax').oninput  = e => { S.priceMax = e.target.value === '' ? null : +e.target.value; apply(); };
 document.getElementById('fMedian').onchange   = e => { S.median = e.target.checked; apply(); };
 document.getElementById('fPhoto').onchange    = e => { S.photo = e.target.checked; apply(); };
 document.getElementById('clear').onclick = () => {
   S.q = ''; S.contractors.clear(); S.formats.clear(); S.cities.clear();
-  S.district = S.zone = S.street = ''; S.priceMin = S.priceMax = null;
+  S.district = S.zone = S.street = '';
   S.median = S.photo = false;
   document.getElementById('q').value = '';
-  document.getElementById('fPriceMin').value = '';
-  document.getElementById('fPriceMax').value = '';
   ['fMedian','fPhoto'].forEach(i => document.getElementById(i).checked = false);
   buildFilters(); apply();
 };
